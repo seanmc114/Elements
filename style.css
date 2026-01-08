@@ -468,3 +468,36 @@ option{
   .build{ flex-direction:column; }
   .buildRight{ flex-direction:row; justify-content:space-between; flex-wrap:wrap; }
 }
+/* --- Make Formula + Taps boxes genuinely smaller (not just the text) --- */
+
+/* 1) Don't stretch all build panels to the height of the button column */
+.build{
+  align-items: flex-start;  /* was stretch */
+}
+
+/* 2) Make the right panel shorter by laying buttons out in rows */
+.buildRight{
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  max-width: 320px;          /* keeps it from becoming huge */
+}
+
+/* 3) Smaller buttons so the right panel doesn't become a tall tower */
+.buildRight .btn{
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+/* 4) Reduce padding in the left/mid panels so they visually shrink too */
+.buildLeft, .buildMid{
+  padding: 8px 10px;
+}
+
+/* Optional: slightly smaller token pills */
+.tapToken{
+  padding: 3px 7px;
+  font-size: 12px;
+}
