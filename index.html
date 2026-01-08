@@ -10,7 +10,7 @@
   <header class="topbar">
     <div class="brand">
       <div class="title">Element Builder</div>
-      <div class="subtitle">Build real compounds by tapping the periodic table</div>
+      <div class="subtitle">Build compounds by tapping the periodic table</div>
     </div>
 
     <div class="controls">
@@ -27,7 +27,7 @@
         <label for="levelSelect">Set</label>
         <select id="levelSelect">
           <option value="level1">Level 1 (Everyday)</option>
-          <option value="level2">Level 2 (Air & Atmosphere)</option>
+          <option value="level2">Level 2 (Air)</option>
           <option value="level3">Level 3 (Acids & Bases)</option>
           <option value="level4">Level 4 (Salts & Oxides)</option>
           <option value="level5">Level 5 (Challenge)</option>
@@ -37,9 +37,9 @@
       <div class="chip">
         <label for="strictToggle">Order</label>
         <select id="strictToggle">
-          <option value="teach">Teach (Almost if order wrong)</option>
+          <option value="teach">Teach (lenient)</option>
           <option value="loose">Loose (counts only)</option>
-          <option value="strict">Strict (must tap in formula order)</option>
+          <option value="strict">Strict (order matters)</option>
         </select>
       </div>
 
@@ -50,6 +50,7 @@
 
   <main class="wrap">
     <section class="game">
+
       <div class="panel prompt">
         <div class="promptTop">
           <div class="pill" id="modePill">Practice</div>
@@ -58,18 +59,26 @@
           <div class="pill" id="bestPill">Best: 0</div>
           <div class="pill" id="streakPill">Streak: 0</div>
           <div class="pill" id="poolPill">Pool: —</div>
+
+          <div class="pill hintPill" id="hintEnergyPill">Hints: 0 (0 ready)</div>
+          <div class="hintBar" id="hintChargeBar" aria-label="Hint charge bar">
+            <div class="hintBarFill" id="hintChargeFill"></div>
+            <div class="hintBarText" id="hintChargeText">0/3</div>
+          </div>
         </div>
 
         <div class="promptBody">
           <div class="promptLabel">MAKE:</div>
           <div class="promptText" id="promptText">Press Start</div>
         </div>
+
+        <!-- IMPORTANT: This line shows ONLY earned hint text (never the answer) -->
         <div class="promptHint" id="promptHint"></div>
       </div>
 
       <div class="panel build">
         <div class="buildLeft">
-          <div class="buildLabel">Your formula</div>
+          <div class="buildLabel">Your build</div>
           <div class="formula" id="formulaPreview">—</div>
         </div>
 
@@ -79,19 +88,18 @@
         </div>
 
         <div class="buildRight">
-         <button id="undoBtn" class="btn" type="button">Undo</button>
-<button id="clearBtn" class="btn" type="button">Clear</button>
-<button id="skipBtn" class="btn" type="button" title="Skip this compound">Skip</button>
-<button id="hintBtn" class="btn" type="button">Hint</button>
-<button id="submitBtn" class="btn primary" type="button">Submit</button>
- 
+          <button id="undoBtn" class="btn" type="button">Undo</button>
+          <button id="clearBtn" class="btn" type="button">Clear</button>
+          <button id="skipBtn" class="btn" type="button" title="Skip this compound">Skip</button>
+          <button id="hintBtn" class="btn" type="button">Hint</button>
+          <button id="submitBtn" class="btn primary" type="button">Submit</button>
         </div>
       </div>
 
       <div class="panel table">
         <div class="tableHeader">
           <div class="tableTitle">Periodic Table</div>
-          <div class="tableNote">Tap elements to build the compound. Press Enter to submit.</div>
+          <div class="tableNote">Tap elements to build. Enter = Submit • Backspace = Undo • Delete = Clear</div>
         </div>
 
         <div id="ptable" class="ptable" aria-label="Periodic table"></div>
@@ -118,12 +126,13 @@
         </div>
         <div class="footerSmall">Synge Street Learning Games</div>
       </footer>
+
     </section>
   </main>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <!-- Overlay is used ONLY for Game Over (never during play), so it won't block buttons -->
+  <!-- Overlay used ONLY for end-of-game screen (never blocks play) -->
   <div id="overlay" class="overlay" aria-hidden="true">
     <div class="overlayCard" id="overlayCard"></div>
   </div>
