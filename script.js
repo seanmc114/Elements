@@ -1,8 +1,8 @@
 /* Element Builder • Synge Street Learning Games
-   FULL FIX:
-   - Undo / Clear / Skip are NEVER disabled (no "dulled" state)
-   - Overlay is used ONLY for Game Over (does not block clicks during play)
-   - Full periodic table (118 elements + lanth/act rows)
+   - Earned hints ("Hint Energy")
+   - No answer shown under compound name
+   - Full periodic table (118) + lanthanide/actinide rows
+   - Undo/Clear/Skip never disabled
 */
 
 const $ = (id) => document.getElementById(id);
@@ -18,10 +18,10 @@ const timerPill  = $("timerPill");
 const scorePill  = $("scorePill");
 const bestPill   = $("bestPill");
 const streakPill = $("streakPill");
-const poolPill   = $("poolPill");
+const poolPill   = $("poolPill"); // we keep pool here
 
 const promptText = $("promptText");
-const promptHint = $("promptHint");
+const promptHint = $("promptHint"); // used only for earned hints + non-answer status
 
 const formulaPreview = $("formulaPreview");
 const tapRow   = $("tapRow");
@@ -29,24 +29,49 @@ const undoBtn  = $("undoBtn");
 const clearBtn = $("clearBtn");
 const skipBtn  = $("skipBtn");
 const submitBtn= $("submitBtn");
+const hintBtn  = $("hintBtn");
 
 const toast   = $("toast");
 const overlay = $("overlay");
 const overlayCard = $("overlayCard");
 const ptable  = $("ptable");
 
-// --- FORCE ACTION BUTTONS ON (prevents "dulled / inactive") ---
-const actionButtons = [undoBtn, clearBtn, skipBtn, submitBtn];
+// --- Force action buttons on (prevents "dulled / disabled") ---
+const actionButtons = [undoBtn, clearBtn, skipBtn, submitBtn, hintBtn].filter(Boolean);
 function enableActionButtons(){
   actionButtons.forEach(b => {
-    if(!b) return;
     b.disabled = false;
     b.removeAttribute("disabled");
     b.style.pointerEvents = "auto";
-    b.style.opacity = ""; // let CSS handle
   });
 }
 
+// ====== Hint Energy system ======
+const HINT_COST = 3;          // change this if you want (e.g., 2 or 4)
+let hintEnergy = 0;           // earned by correct answers
+let hintStage = 0;            // resets per target: 0 -> none used, 1 -> elements shown, 2 -> counts shown
+
+function ensureHintEnergyPill(){
+  const top = document.querySelector(".promptTop");
+  if(!top) return null;
+
+  let pill = document.getElementById("hintEnergyPill");
+  if(pill) return pill;
+
+  pill = document.createElement("div");
+  pill.className = "pill";
+  pill.id = "hintEnergyPill";
+  pill.textContent = "Hints: 0";
+  top.appendChild(pill);
+  return pill;
+}
+const hintEnergyPill = ensureHintEnergyPill();
+
+function updateHintEnergyUI(){
+  if(hintEnergyPill) hintEnergyPill.textContent = `Hints: ${hintEnergy}`;
+}
+
+// ====== state ======
 let soundOn = true;
 let gameState = "idle"; // idle | running | ended
 let mode = "practice";
@@ -55,6 +80,7 @@ let levelKey = "level1";
 
 let score = 0;
 let streak = 0;
+
 let selection = [];
 let currentTarget = null;
 
@@ -62,68 +88,67 @@ const sprintSeconds = 60;
 let timeLeft = sprintSeconds;
 let timerHandle = null;
 
-// ====== compounds ======
+// ====== compound sets (hints are NON-formula: no CO₂, no subscripts) ======
 const COMPOUND_SETS = {
   level1: [
-    { name:"Water", formulaOrder:["H","O"], composition:{H:2,O:1}, hint:"2 hydrogen + 1 oxygen" },
-    { name:"Carbon dioxide", formulaOrder:["C","O"], composition:{C:1,O:2}, hint:"CO₂" },
-    { name:"Salt (Sodium chloride)", formulaOrder:["Na","Cl"], composition:{Na:1,Cl:1}, hint:"Table salt" },
-    { name:"Ammonia", formulaOrder:["N","H"], composition:{N:1,H:3}, hint:"NH₃" },
-    { name:"Methane", formulaOrder:["C","H"], composition:{C:1,H:4}, hint:"CH₄" },
-    { name:"Hydrogen peroxide", formulaOrder:["H","O"], composition:{H:2,O:2}, hint:"H₂O₂" },
-    { name:"Magnesium oxide", formulaOrder:["Mg","O"], composition:{Mg:1,O:1}, hint:"MgO" },
-    { name:"Calcium chloride", formulaOrder:["Ca","Cl"], composition:{Ca:1,Cl:2}, hint:"CaCl₂" },
-    { name:"Iron(III) oxide", formulaOrder:["Fe","O"], composition:{Fe:2,O:3}, hint:"Fe₂O₃ (rust)" },
-    { name:"Silicon dioxide", formulaOrder:["Si","O"], composition:{Si:1,O:2}, hint:"SiO₂ (sand/glass)" },
+    { name:"Water", formulaOrder:["H","O"], composition:{H:2,O:1} },
+    { name:"Carbon dioxide", formulaOrder:["C","O"], composition:{C:1,O:2} },
+    { name:"Salt (Sodium chloride)", formulaOrder:["Na","Cl"], composition:{Na:1,Cl:1} },
+    { name:"Ammonia", formulaOrder:["N","H"], composition:{N:1,H:3} },
+    { name:"Methane", formulaOrder:["C","H"], composition:{C:1,H:4} },
+    { name:"Hydrogen peroxide", formulaOrder:["H","O"], composition:{H:2,O:2} },
+    { name:"Magnesium oxide", formulaOrder:["Mg","O"], composition:{Mg:1,O:1} },
+    { name:"Calcium chloride", formulaOrder:["Ca","Cl"], composition:{Ca:1,Cl:2} },
+    { name:"Iron(III) oxide", formulaOrder:["Fe","O"], composition:{Fe:2,O:3} },
+    { name:"Silicon dioxide", formulaOrder:["Si","O"], composition:{Si:1,O:2} },
   ],
   level2: [
-    { name:"Oxygen", formulaOrder:["O"], composition:{O:2}, hint:"O₂ (diatomic)" },
-    { name:"Nitrogen", formulaOrder:["N"], composition:{N:2}, hint:"N₂ (diatomic)" },
-    { name:"Hydrogen", formulaOrder:["H"], composition:{H:2}, hint:"H₂ (diatomic)" },
-    { name:"Chlorine", formulaOrder:["Cl"], composition:{Cl:2}, hint:"Cl₂ (diatomic)" },
-    { name:"Carbon monoxide", formulaOrder:["C","O"], composition:{C:1,O:1}, hint:"CO (dangerous gas)" },
-    { name:"Sulfur dioxide", formulaOrder:["S","O"], composition:{S:1,O:2}, hint:"SO₂" },
-    { name:"Sulfur trioxide", formulaOrder:["S","O"], composition:{S:1,O:3}, hint:"SO₃" },
-    { name:"Nitrogen dioxide", formulaOrder:["N","O"], composition:{N:1,O:2}, hint:"NO₂" },
-    { name:"Ozone", formulaOrder:["O"], composition:{O:3}, hint:"O₃" },
+    { name:"Oxygen", formulaOrder:["O"], composition:{O:2} },
+    { name:"Nitrogen", formulaOrder:["N"], composition:{N:2} },
+    { name:"Hydrogen", formulaOrder:["H"], composition:{H:2} },
+    { name:"Chlorine", formulaOrder:["Cl"], composition:{Cl:2} },
+    { name:"Carbon monoxide", formulaOrder:["C","O"], composition:{C:1,O:1} },
+    { name:"Sulfur dioxide", formulaOrder:["S","O"], composition:{S:1,O:2} },
+    { name:"Sulfur trioxide", formulaOrder:["S","O"], composition:{S:1,O:3} },
+    { name:"Nitrogen dioxide", formulaOrder:["N","O"], composition:{N:1,O:2} },
+    { name:"Ozone", formulaOrder:["O"], composition:{O:3} },
   ],
   level3: [
-    { name:"Hydrochloric acid", formulaOrder:["H","Cl"], composition:{H:1,Cl:1}, hint:"HCl" },
-    { name:"Nitric acid", formulaOrder:["H","N","O"], composition:{H:1,N:1,O:3}, hint:"HNO₃" },
-    { name:"Sulfuric acid", formulaOrder:["H","S","O"], composition:{H:2,S:1,O:4}, hint:"H₂SO₄" },
-    { name:"Phosphoric acid", formulaOrder:["H","P","O"], composition:{H:3,P:1,O:4}, hint:"H₃PO₄" },
-    { name:"Sodium hydroxide", formulaOrder:["Na","O","H"], composition:{Na:1,O:1,H:1}, hint:"NaOH" },
-    { name:"Calcium hydroxide", formulaOrder:["Ca","O","H"], composition:{Ca:1,O:2,H:2}, hint:"Ca(OH)₂ (tap Ca O O H H)" },
-    { name:"Sodium carbonate", formulaOrder:["Na","C","O"], composition:{Na:2,C:1,O:3}, hint:"Na₂CO₃" },
-    { name:"Sodium bicarbonate", formulaOrder:["Na","H","C","O"], composition:{Na:1,H:1,C:1,O:3}, hint:"NaHCO₃" },
+    { name:"Hydrochloric acid", formulaOrder:["H","Cl"], composition:{H:1,Cl:1} },
+    { name:"Nitric acid", formulaOrder:["H","N","O"], composition:{H:1,N:1,O:3} },
+    { name:"Sulfuric acid", formulaOrder:["H","S","O"], composition:{H:2,S:1,O:4} },
+    { name:"Phosphoric acid", formulaOrder:["H","P","O"], composition:{H:3,P:1,O:4} },
+    { name:"Sodium hydroxide", formulaOrder:["Na","O","H"], composition:{Na:1,O:1,H:1} },
+    { name:"Calcium hydroxide", formulaOrder:["Ca","O","H"], composition:{Ca:1,O:2,H:2} },
+    { name:"Sodium carbonate", formulaOrder:["Na","C","O"], composition:{Na:2,C:1,O:3} },
+    { name:"Sodium bicarbonate", formulaOrder:["Na","H","C","O"], composition:{Na:1,H:1,C:1,O:3} },
   ],
   level4: [
-    { name:"Sodium oxide", formulaOrder:["Na","O"], composition:{Na:2,O:1}, hint:"Na₂O" },
-    { name:"Potassium oxide", formulaOrder:["K","O"], composition:{K:2,O:1}, hint:"K₂O" },
-    { name:"Aluminium oxide", formulaOrder:["Al","O"], composition:{Al:2,O:3}, hint:"Al₂O₃" },
-    { name:"Copper(I) oxide", formulaOrder:["Cu","O"], composition:{Cu:2,O:1}, hint:"Cu₂O" },
-    { name:"Copper(II) oxide", formulaOrder:["Cu","O"], composition:{Cu:1,O:1}, hint:"CuO" },
-    { name:"Magnesium chloride", formulaOrder:["Mg","Cl"], composition:{Mg:1,Cl:2}, hint:"MgCl₂" },
-    { name:"Calcium oxide", formulaOrder:["Ca","O"], composition:{Ca:1,O:1}, hint:"CaO" },
-    { name:"Zinc oxide", formulaOrder:["Zn","O"], composition:{Zn:1,O:1}, hint:"ZnO" },
+    { name:"Sodium oxide", formulaOrder:["Na","O"], composition:{Na:2,O:1} },
+    { name:"Potassium oxide", formulaOrder:["K","O"], composition:{K:2,O:1} },
+    { name:"Aluminium oxide", formulaOrder:["Al","O"], composition:{Al:2,O:3} },
+    { name:"Copper(I) oxide", formulaOrder:["Cu","O"], composition:{Cu:2,O:1} },
+    { name:"Copper(II) oxide", formulaOrder:["Cu","O"], composition:{Cu:1,O:1} },
+    { name:"Magnesium chloride", formulaOrder:["Mg","Cl"], composition:{Mg:1,Cl:2} },
+    { name:"Calcium oxide", formulaOrder:["Ca","O"], composition:{Ca:1,O:1} },
+    { name:"Zinc oxide", formulaOrder:["Zn","O"], composition:{Zn:1,O:1} },
   ],
   level5: [
-    { name:"Glucose", formulaOrder:["C","H","O"], composition:{C:6,H:12,O:6}, hint:"C₆H₁₂O₆" },
-    { name:"Ethanol", formulaOrder:["C","H","O"], composition:{C:2,H:6,O:1}, hint:"C₂H₆O" },
-    { name:"Propane", formulaOrder:["C","H"], composition:{C:3,H:8}, hint:"C₃H₈" },
-    { name:"Butane", formulaOrder:["C","H"], composition:{C:4,H:10}, hint:"C₄H₁₀" },
-    { name:"Calcium carbonate", formulaOrder:["Ca","C","O"], composition:{Ca:1,C:1,O:3}, hint:"CaCO₃" },
-    { name:"Sodium sulfate", formulaOrder:["Na","S","O"], composition:{Na:2,S:1,O:4}, hint:"Na₂SO₄" },
-    { name:"Ammonium chloride", formulaOrder:["N","H","Cl"], composition:{N:1,H:4,Cl:1}, hint:"NH₄Cl" },
+    { name:"Glucose", formulaOrder:["C","H","O"], composition:{C:6,H:12,O:6} },
+    { name:"Ethanol", formulaOrder:["C","H","O"], composition:{C:2,H:6,O:1} },
+    { name:"Propane", formulaOrder:["C","H"], composition:{C:3,H:8} },
+    { name:"Butane", formulaOrder:["C","H"], composition:{C:4,H:10} },
+    { name:"Calcium carbonate", formulaOrder:["Ca","C","O"], composition:{Ca:1,C:1,O:3} },
+    { name:"Sodium sulfate", formulaOrder:["Na","S","O"], composition:{Na:2,S:1,O:4} },
+    { name:"Ammonium chloride", formulaOrder:["N","H","Cl"], composition:{N:1,H:4,Cl:1} },
   ],
 };
 
-// ====== Full periodic table layout (118) ======
+// ====== Full periodic table (118) ======
 const ELEMENTS = [
   // period 1
   {z:1,s:"H",n:"Hydrogen",p:1,g:1,c:"nonmetal"},
   {z:2,s:"He",n:"Helium",p:1,g:18,c:"noble"},
-
   // period 2
   {z:3,s:"Li",n:"Lithium",p:2,g:1,c:"alkali"},
   {z:4,s:"Be",n:"Beryllium",p:2,g:2,c:"alkaline"},
@@ -133,7 +158,6 @@ const ELEMENTS = [
   {z:8,s:"O",n:"Oxygen",p:2,g:16,c:"nonmetal"},
   {z:9,s:"F",n:"Fluorine",p:2,g:17,c:"halogen"},
   {z:10,s:"Ne",n:"Neon",p:2,g:18,c:"noble"},
-
   // period 3
   {z:11,s:"Na",n:"Sodium",p:3,g:1,c:"alkali"},
   {z:12,s:"Mg",n:"Magnesium",p:3,g:2,c:"alkaline"},
@@ -143,7 +167,6 @@ const ELEMENTS = [
   {z:16,s:"S",n:"Sulfur",p:3,g:16,c:"nonmetal"},
   {z:17,s:"Cl",n:"Chlorine",p:3,g:17,c:"halogen"},
   {z:18,s:"Ar",n:"Argon",p:3,g:18,c:"noble"},
-
   // period 4
   {z:19,s:"K",n:"Potassium",p:4,g:1,c:"alkali"},
   {z:20,s:"Ca",n:"Calcium",p:4,g:2,c:"alkaline"},
@@ -163,7 +186,6 @@ const ELEMENTS = [
   {z:34,s:"Se",n:"Selenium",p:4,g:16,c:"nonmetal"},
   {z:35,s:"Br",n:"Bromine",p:4,g:17,c:"halogen"},
   {z:36,s:"Kr",n:"Krypton",p:4,g:18,c:"noble"},
-
   // period 5
   {z:37,s:"Rb",n:"Rubidium",p:5,g:1,c:"alkali"},
   {z:38,s:"Sr",n:"Strontium",p:5,g:2,c:"alkaline"},
@@ -183,8 +205,7 @@ const ELEMENTS = [
   {z:52,s:"Te",n:"Tellurium",p:5,g:16,c:"metalloid"},
   {z:53,s:"I",n:"Iodine",p:5,g:17,c:"halogen"},
   {z:54,s:"Xe",n:"Xenon",p:5,g:18,c:"noble"},
-
-  // period 6 (La in main table; lanthanides row below)
+  // period 6 (La shown in main; lanth row below)
   {z:55,s:"Cs",n:"Caesium",p:6,g:1,c:"alkali"},
   {z:56,s:"Ba",n:"Barium",p:6,g:2,c:"alkaline"},
   {z:57,s:"La",n:"Lanthanum",p:6,g:3,c:"lanth"},
@@ -203,8 +224,7 @@ const ELEMENTS = [
   {z:84,s:"Po",n:"Polonium",p:6,g:16,c:"post"},
   {z:85,s:"At",n:"Astatine",p:6,g:17,c:"halogen"},
   {z:86,s:"Rn",n:"Radon",p:6,g:18,c:"noble"},
-
-  // period 7 (Ac in main table; actinides row below)
+  // period 7 (Ac shown in main; act row below)
   {z:87,s:"Fr",n:"Francium",p:7,g:1,c:"alkali"},
   {z:88,s:"Ra",n:"Radium",p:7,g:2,c:"alkaline"},
   {z:89,s:"Ac",n:"Actinium",p:7,g:3,c:"act"},
@@ -223,8 +243,7 @@ const ELEMENTS = [
   {z:116,s:"Lv",n:"Livermorium",p:7,g:16,c:"post"},
   {z:117,s:"Ts",n:"Tennessine",p:7,g:17,c:"halogen"},
   {z:118,s:"Og",n:"Oganesson",p:7,g:18,c:"noble"},
-
-  // Lanthanides row (period 8), placed under groups 4–17
+  // Lanthanides row (period 8)
   {z:58,s:"Ce",n:"Cerium",p:8,g:4,c:"lanth"},
   {z:59,s:"Pr",n:"Praseodymium",p:8,g:5,c:"lanth"},
   {z:60,s:"Nd",n:"Neodymium",p:8,g:6,c:"lanth"},
@@ -239,8 +258,7 @@ const ELEMENTS = [
   {z:69,s:"Tm",n:"Thulium",p:8,g:15,c:"lanth"},
   {z:70,s:"Yb",n:"Ytterbium",p:8,g:16,c:"lanth"},
   {z:71,s:"Lu",n:"Lutetium",p:8,g:17,c:"lanth"},
-
-  // Actinides row (period 9), placed under groups 4–17
+  // Actinides row (period 9)
   {z:90,s:"Th",n:"Thorium",p:9,g:4,c:"act"},
   {z:91,s:"Pa",n:"Protactinium",p:9,g:5,c:"act"},
   {z:92,s:"U",n:"Uranium",p:9,g:6,c:"act"},
@@ -257,13 +275,6 @@ const ELEMENTS = [
   {z:103,s:"Lr",n:"Lawrencium",p:9,g:17,c:"act"},
 ];
 
-// We also need the “gap” elements for periods 6/7 that aren’t in the main row because of lanth/act blocks:
-const EXTRA_MAIN = [
-  // period 6: 57–71 between Ba and Hf (Ce–Lu shown in row 8; but elements 57–71 still exist)
-  {z:58,s:"Ce",n:"Cerium",p:6,g:4,c:"lanth"}, // not shown in main; we already show in row 8
-];
-// NOTE: We intentionally do NOT duplicate them in main table; the row 8/9 display is standard for classroom charts.
-
 // ====== helpers ======
 function showToast(msg){
   toast.textContent = msg;
@@ -272,34 +283,10 @@ function showToast(msg){
   showToast._t = setTimeout(() => toast.classList.remove("show"), 1100);
 }
 
-function subscriptNumber(num){
-  const map = { "0":"₀","1":"₁","2":"₂","3":"₃","4":"₄","5":"₅","6":"₆","7":"₇","8":"₈","9":"₉" };
-  return String(num).split("").map(ch => map[ch] ?? ch).join("");
-}
-
 function selectionCounts(sel){
   const counts = {};
   for(const sym of sel) counts[sym] = (counts[sym] || 0) + 1;
   return counts;
-}
-
-function renderFormula(order, counts){
-  let out = "";
-  for(const sym of order){
-    const ct = counts[sym] || 0;
-    if(ct <= 0) continue;
-    out += sym;
-    if(ct > 1) out += subscriptNumber(ct);
-  }
-  // any remaining symbols not in order -> append alpha
-  const remaining = Object.keys(counts).filter(k => !order.includes(k)).sort();
-  for(const sym of remaining){
-    const ct = counts[sym] || 0;
-    if(ct <= 0) continue;
-    out += sym;
-    if(ct > 1) out += subscriptNumber(ct);
-  }
-  return out || "—";
 }
 
 function sameCounts(a, b){
@@ -328,6 +315,25 @@ function arraysEqual(a,b){
   if(a.length !== b.length) return false;
   for(let i=0;i<a.length;i++) if(a[i] !== b[i]) return false;
   return true;
+}
+
+// Non-answer hints (never show full formula)
+function hintElementsOnly(target){
+  const elems = Object.keys(target.composition).sort();
+  if(elems.length === 1) return `Element: ${elems[0]}`;
+  if(elems.length === 2) return `Elements: ${elems[0]} and ${elems[1]}`;
+  return `Elements: ${elems.slice(0,-1).join(", ")} and ${elems[elems.length-1]}`;
+}
+
+function hintCounts(target){
+  const elems = Object.keys(target.composition).sort();
+  const parts = elems.map(sym => `${target.composition[sym]}×${sym}`);
+  return `Counts: ${parts.join("  ")}`;
+}
+
+function formatSelectionPreview(){
+  if(selection.length === 0) return "—";
+  return selection.join(" ");
 }
 
 // ====== audio ======
@@ -362,6 +368,30 @@ function bestKey(){ return `element-builder::best::${mode}::${levelKey}::${stric
 function getBest(){ return Number(localStorage.getItem(bestKey()) || "0"); }
 function setBest(val){ localStorage.setItem(bestKey(), String(val)); }
 
+// ====== UI ======
+function setPills(){
+  modePill.textContent = mode === "practice" ? "Practice" : mode === "sprint" ? "Sprint" : "Streak";
+  scorePill.textContent = `Score: ${score}`;
+  bestPill.textContent = `Best: ${getBest()}`;
+  streakPill.textContent = `Streak: ${streak}`;
+  timerPill.textContent = (mode === "sprint") ? `${timeLeft}s` : "∞";
+  poolPill.textContent = `Pool: ${(COMPOUND_SETS[levelKey] || []).length}`;
+  updateHintEnergyUI();
+}
+
+function refreshBuildUI(){
+  // Show ONLY their build (no target answer)
+  formulaPreview.textContent = formatSelectionPreview();
+
+  tapRow.innerHTML = "";
+  for(const sym of selection){
+    const tok = document.createElement("div");
+    tok.className = "tapToken";
+    tok.textContent = sym;
+    tapRow.appendChild(tok);
+  }
+}
+
 // ====== table render ======
 function renderTable(){
   ptable.innerHTML = "";
@@ -393,36 +423,17 @@ function renderTable(){
   }
 }
 
-// ====== UI ======
-function setPills(){
-  modePill.textContent = mode === "practice" ? "Practice" : mode === "sprint" ? "Sprint" : "Streak";
-  scorePill.textContent = `Score: ${score}`;
-  bestPill.textContent = `Best: ${getBest()}`;
-  streakPill.textContent = `Streak: ${streak}`;
-  timerPill.textContent = (mode === "sprint") ? `${timeLeft}s` : "∞";
-  poolPill.textContent = `Pool: ${(COMPOUND_SETS[levelKey] || []).length}`;
-}
-
-function refreshBuildUI(){
-  const counts = selectionCounts(selection);
-  const order = currentTarget?.formulaOrder || Object.keys(counts).sort();
-  formulaPreview.textContent = currentTarget ? renderFormula(order, counts) : "—";
-
-  tapRow.innerHTML = "";
-  for(const sym of selection){
-    const tok = document.createElement("div");
-    tok.className = "tapToken";
-    tok.textContent = sym;
-    tapRow.appendChild(tok);
-  }
-}
-
 // ====== game flow ======
 function pickTarget(){
   const set = COMPOUND_SETS[levelKey] || COMPOUND_SETS.level1;
   currentTarget = set[Math.floor(Math.random() * set.length)];
+
   promptText.textContent = currentTarget.name;
-  promptHint.textContent = currentTarget.hint || "";
+
+  // IMPORTANT: no answer shown under the name
+  promptHint.textContent = "";   // hints only appear when earned + requested
+  hintStage = 0;
+
   selection = [];
   refreshBuildUI();
   setPills();
@@ -462,6 +473,7 @@ function endGame(reason){
       <span class="tag">Mode: ${mode}</span>
       <span class="tag">Set: ${levelKey}</span>
       <span class="tag">Order: ${strictness}</span>
+      <span class="tag">Hint energy: ${hintEnergy}</span>
       <span class="tag">Best: ${Math.max(score, best)} pts</span>
     </div>
     <div class="row" style="margin-top:14px">
@@ -484,13 +496,17 @@ function endGame(reason){
 function scoreCorrect(isPerfect){
   let pts = 10;
   streak += 1;
-  pts += Math.min(10, Math.max(0, streak - 1)); // streak bonus
+  pts += Math.min(10, Math.max(0, streak - 1));
 
   if(strictness === "teach" && !isPerfect){
     pts = Math.max(6, Math.floor(pts * 0.6));
   }
 
   score += pts;
+
+  // Earn hint energy on correct answers
+  hintEnergy += 1;
+
   if(score > getBest()) bestPill.textContent = `Best: ${score}`;
   setPills();
   return pts;
@@ -517,7 +533,7 @@ function submit(){
   if(!countsOk){
     beep("bad");
     scoreWrong("count");
-    showToast(`❌ Not quite — need ${renderFormula(currentTarget.formulaOrder, want)}`);
+    showToast("❌ Not quite — try again (earn hints if stuck)");
     if(mode === "streak"){ endGame("Wrong answer — streak ended."); return; }
     pickTarget();
     return;
@@ -526,7 +542,7 @@ function submit(){
   if(strictness === "loose"){
     beep("good");
     const pts = scoreCorrect(true);
-    showToast(`✅ Correct! +${pts} (${renderFormula(currentTarget.formulaOrder, want)})`);
+    showToast(`✅ Correct! +${pts}  (Hint +1)`);
     pickTarget();
     return;
   }
@@ -535,12 +551,12 @@ function submit(){
     if(orderOk){
       beep("good");
       const pts = scoreCorrect(true);
-      showToast(`✅ Perfect! +${pts} (${renderFormula(currentTarget.formulaOrder, want)})`);
+      showToast(`✅ Perfect! +${pts}  (Hint +1)`);
       pickTarget();
     } else {
       beep("bad");
       scoreWrong("order");
-      showToast(`❌ Order matters — try: ${canonical.join(" ")}`);
+      showToast("❌ Order matters — try again (earn hints if stuck)");
       if(mode === "streak"){ endGame("Wrong order — streak ended."); return; }
       pickTarget();
     }
@@ -551,17 +567,17 @@ function submit(){
   if(orderOk){
     beep("good");
     const pts = scoreCorrect(true);
-    showToast(`✅ Perfect! +${pts}`);
+    showToast(`✅ Perfect! +${pts}  (Hint +1)`);
   } else {
     beep("warn");
     const pts = scoreCorrect(false);
-    showToast(`⚠️ Almost! +${pts} — usually ${renderFormula(currentTarget.formulaOrder, want)}`);
+    showToast(`⚠️ Almost! +${pts}  (Hint +1)`);
   }
   pickTarget();
 }
 
 function startGame(){
-  enableActionButtons(); // guarantee buttons never “dulled”
+  enableActionButtons();
 
   mode = modeSelect.value;
   strictness = strictToggle.value;
@@ -569,6 +585,9 @@ function startGame(){
 
   score = 0;
   streak = 0;
+  hintEnergy = 0;
+  hintStage = 0;
+
   timeLeft = sprintSeconds;
   gameState = "running";
 
@@ -580,6 +599,38 @@ function startGame(){
 
   if(mode === "sprint") startTimer();
   else stopTimer();
+}
+
+// ====== Hint button (earned) ======
+if(hintBtn){
+  hintBtn.addEventListener("click", () => {
+    enableActionButtons();
+    if(gameState !== "running"){ showToast("Press Start"); return; }
+    if(!currentTarget) return;
+
+    if(hintEnergy < HINT_COST){
+      const need = HINT_COST - hintEnergy;
+      showToast(`Need ${need} more correct to use Hint`);
+      // show non-answer status line (optional)
+      promptHint.textContent = `Hint energy: ${hintEnergy}/${HINT_COST} (earn by correct answers)`;
+      return;
+    }
+
+    // Spend energy
+    hintEnergy -= HINT_COST;
+    updateHintEnergyUI();
+
+    // Tiered hints per compound (never full formula)
+    hintStage = Math.min(2, hintStage + 1);
+
+    if(hintStage === 1){
+      promptHint.textContent = `Hint: ${hintElementsOnly(currentTarget)}`;
+      showToast("Hint used: elements");
+    } else {
+      promptHint.textContent = `Hint: ${hintCounts(currentTarget)}`;
+      showToast("Hint used: counts");
+    }
+  });
 }
 
 // ====== events ======
@@ -607,6 +658,8 @@ skipBtn.addEventListener("click", () => {
   if(gameState !== "running"){ showToast("Press Start"); return; }
   if(mode !== "practice") score = Math.max(0, score - 1);
   streak = 0;
+  hintStage = 0;
+  promptHint.textContent = "";
   showToast("Skipped");
   pickTarget();
 });
