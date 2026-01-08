@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Element Builder</title>
+  <title>Element Builder • Synge Street Learning Games</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
       <div class="title">Element Builder</div>
-      <div class="subtitle">Tap the periodic table to build compounds</div>
+      <div class="subtitle">Build real compounds by tapping the periodic table</div>
     </div>
 
     <div class="controls">
@@ -27,7 +27,10 @@
         <label for="levelSelect">Set</label>
         <select id="levelSelect">
           <option value="level1">Level 1 (Everyday)</option>
-          <option value="level2">Level 2 (Acids/Bases)</option>
+          <option value="level2">Level 2 (Air & Atmosphere)</option>
+          <option value="level3">Level 3 (Acids & Bases)</option>
+          <option value="level4">Level 4 (Salts & Oxides)</option>
+          <option value="level5">Level 5 (Challenge)</option>
         </select>
       </div>
 
@@ -54,13 +57,14 @@
           <div class="pill" id="scorePill">Score: 0</div>
           <div class="pill" id="bestPill">Best: 0</div>
           <div class="pill" id="streakPill">Streak: 0</div>
+          <div class="pill" id="poolPill">Pool: —</div>
         </div>
 
         <div class="promptBody">
           <div class="promptLabel">MAKE:</div>
           <div class="promptText" id="promptText">Press Start</div>
-          <div class="promptHint" id="promptHint"></div>
         </div>
+        <div class="promptHint" id="promptHint"></div>
       </div>
 
       <div class="panel build">
@@ -77,6 +81,7 @@
         <div class="buildRight">
           <button id="undoBtn" class="btn" type="button">Undo</button>
           <button id="clearBtn" class="btn" type="button">Clear</button>
+          <button id="skipBtn" class="btn" type="button" title="Skip this compound">Skip</button>
           <button id="submitBtn" class="btn primary" type="button">Submit</button>
         </div>
       </div>
@@ -84,7 +89,7 @@
       <div class="panel table">
         <div class="tableHeader">
           <div class="tableTitle">Periodic Table</div>
-          <div class="tableNote">Tap elements to build the compound.</div>
+          <div class="tableNote">Tap elements to build the compound. Press Enter to submit.</div>
         </div>
 
         <div id="ptable" class="ptable" aria-label="Periodic table"></div>
@@ -102,6 +107,15 @@
           <span class="keyItem"><span class="keySwatch act"></span> Actinide</span>
         </div>
       </div>
+
+      <footer class="footer">
+        <div class="footerLine">
+          <span id="copyrightText">©</span>
+          <span class="sep">•</span>
+          <span class="tagline">Build confidently. Think clearly. Learn brilliantly.</span>
+        </div>
+        <div class="footerSmall">Synge Street Learning Games</div>
+      </footer>
     </section>
   </main>
 
@@ -113,4 +127,3 @@
   <script src="script.js"></script>
 </body>
 </html>
-
