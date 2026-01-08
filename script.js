@@ -1,7 +1,8 @@
 /* Element Builder • Synge Street Learning Games
-   FIX: Undo / Skip / Clear always work (no click-blocking overlay during play)
-   - Quick feedback uses toast instead of overlay
-   - Overlay only used for end-of-game screen
+   FULL FIX:
+   - Undo / Clear / Skip are NEVER disabled (no "dulled" state)
+   - Overlay is used ONLY for Game Over (does not block clicks during play)
+   - Full periodic table (118 elements + lanth/act rows)
 */
 
 const $ = (id) => document.getElementById(id);
@@ -34,6 +35,18 @@ const overlay = $("overlay");
 const overlayCard = $("overlayCard");
 const ptable  = $("ptable");
 
+// --- FORCE ACTION BUTTONS ON (prevents "dulled / inactive") ---
+const actionButtons = [undoBtn, clearBtn, skipBtn, submitBtn];
+function enableActionButtons(){
+  actionButtons.forEach(b => {
+    if(!b) return;
+    b.disabled = false;
+    b.removeAttribute("disabled");
+    b.style.pointerEvents = "auto";
+    b.style.opacity = ""; // let CSS handle
+  });
+}
+
 let soundOn = true;
 let gameState = "idle"; // idle | running | ended
 let mode = "practice";
@@ -49,7 +62,7 @@ const sprintSeconds = 60;
 let timeLeft = sprintSeconds;
 let timerHandle = null;
 
-// ====== compounds (expanded) ======
+// ====== compounds ======
 const COMPOUND_SETS = {
   level1: [
     { name:"Water", formulaOrder:["H","O"], composition:{H:2,O:1}, hint:"2 hydrogen + 1 oxygen" },
@@ -61,13 +74,16 @@ const COMPOUND_SETS = {
     { name:"Magnesium oxide", formulaOrder:["Mg","O"], composition:{Mg:1,O:1}, hint:"MgO" },
     { name:"Calcium chloride", formulaOrder:["Ca","Cl"], composition:{Ca:1,Cl:2}, hint:"CaCl₂" },
     { name:"Iron(III) oxide", formulaOrder:["Fe","O"], composition:{Fe:2,O:3}, hint:"Fe₂O₃ (rust)" },
+    { name:"Silicon dioxide", formulaOrder:["Si","O"], composition:{Si:1,O:2}, hint:"SiO₂ (sand/glass)" },
   ],
   level2: [
-    { name:"Oxygen", formulaOrder:["O"], composition:{O:2}, hint:"O₂" },
-    { name:"Nitrogen", formulaOrder:["N"], composition:{N:2}, hint:"N₂" },
-    { name:"Hydrogen", formulaOrder:["H"], composition:{H:2}, hint:"H₂" },
-    { name:"Carbon monoxide", formulaOrder:["C","O"], composition:{C:1,O:1}, hint:"CO" },
+    { name:"Oxygen", formulaOrder:["O"], composition:{O:2}, hint:"O₂ (diatomic)" },
+    { name:"Nitrogen", formulaOrder:["N"], composition:{N:2}, hint:"N₂ (diatomic)" },
+    { name:"Hydrogen", formulaOrder:["H"], composition:{H:2}, hint:"H₂ (diatomic)" },
+    { name:"Chlorine", formulaOrder:["Cl"], composition:{Cl:2}, hint:"Cl₂ (diatomic)" },
+    { name:"Carbon monoxide", formulaOrder:["C","O"], composition:{C:1,O:1}, hint:"CO (dangerous gas)" },
     { name:"Sulfur dioxide", formulaOrder:["S","O"], composition:{S:1,O:2}, hint:"SO₂" },
+    { name:"Sulfur trioxide", formulaOrder:["S","O"], composition:{S:1,O:3}, hint:"SO₃" },
     { name:"Nitrogen dioxide", formulaOrder:["N","O"], composition:{N:1,O:2}, hint:"NO₂" },
     { name:"Ozone", formulaOrder:["O"], composition:{O:3}, hint:"O₃" },
   ],
@@ -75,15 +91,21 @@ const COMPOUND_SETS = {
     { name:"Hydrochloric acid", formulaOrder:["H","Cl"], composition:{H:1,Cl:1}, hint:"HCl" },
     { name:"Nitric acid", formulaOrder:["H","N","O"], composition:{H:1,N:1,O:3}, hint:"HNO₃" },
     { name:"Sulfuric acid", formulaOrder:["H","S","O"], composition:{H:2,S:1,O:4}, hint:"H₂SO₄" },
+    { name:"Phosphoric acid", formulaOrder:["H","P","O"], composition:{H:3,P:1,O:4}, hint:"H₃PO₄" },
     { name:"Sodium hydroxide", formulaOrder:["Na","O","H"], composition:{Na:1,O:1,H:1}, hint:"NaOH" },
     { name:"Calcium hydroxide", formulaOrder:["Ca","O","H"], composition:{Ca:1,O:2,H:2}, hint:"Ca(OH)₂ (tap Ca O O H H)" },
+    { name:"Sodium carbonate", formulaOrder:["Na","C","O"], composition:{Na:2,C:1,O:3}, hint:"Na₂CO₃" },
+    { name:"Sodium bicarbonate", formulaOrder:["Na","H","C","O"], composition:{Na:1,H:1,C:1,O:3}, hint:"NaHCO₃" },
   ],
   level4: [
     { name:"Sodium oxide", formulaOrder:["Na","O"], composition:{Na:2,O:1}, hint:"Na₂O" },
     { name:"Potassium oxide", formulaOrder:["K","O"], composition:{K:2,O:1}, hint:"K₂O" },
     { name:"Aluminium oxide", formulaOrder:["Al","O"], composition:{Al:2,O:3}, hint:"Al₂O₃" },
-    { name:"Silicon dioxide", formulaOrder:["Si","O"], composition:{Si:1,O:2}, hint:"SiO₂" },
     { name:"Copper(I) oxide", formulaOrder:["Cu","O"], composition:{Cu:2,O:1}, hint:"Cu₂O" },
+    { name:"Copper(II) oxide", formulaOrder:["Cu","O"], composition:{Cu:1,O:1}, hint:"CuO" },
+    { name:"Magnesium chloride", formulaOrder:["Mg","Cl"], composition:{Mg:1,Cl:2}, hint:"MgCl₂" },
+    { name:"Calcium oxide", formulaOrder:["Ca","O"], composition:{Ca:1,O:1}, hint:"CaO" },
+    { name:"Zinc oxide", formulaOrder:["Zn","O"], composition:{Zn:1,O:1}, hint:"ZnO" },
   ],
   level5: [
     { name:"Glucose", formulaOrder:["C","H","O"], composition:{C:6,H:12,O:6}, hint:"C₆H₁₂O₆" },
@@ -91,35 +113,163 @@ const COMPOUND_SETS = {
     { name:"Propane", formulaOrder:["C","H"], composition:{C:3,H:8}, hint:"C₃H₈" },
     { name:"Butane", formulaOrder:["C","H"], composition:{C:4,H:10}, hint:"C₄H₁₀" },
     { name:"Calcium carbonate", formulaOrder:["Ca","C","O"], composition:{Ca:1,C:1,O:3}, hint:"CaCO₃" },
+    { name:"Sodium sulfate", formulaOrder:["Na","S","O"], composition:{Na:2,S:1,O:4}, hint:"Na₂SO₄" },
+    { name:"Ammonium chloride", formulaOrder:["N","H","Cl"], composition:{N:1,H:4,Cl:1}, hint:"NH₄Cl" },
   ],
 };
 
-// ====== elements (covering what we need; you can swap back to full 118 later) ======
+// ====== Full periodic table layout (118) ======
 const ELEMENTS = [
-  { z:1, s:"H", n:"Hydrogen", p:1, g:1, c:"nonmetal" },
-  { z:2, s:"He", n:"Helium", p:1, g:18, c:"noble" },
-  { z:6, s:"C", n:"Carbon", p:2, g:14, c:"nonmetal" },
-  { z:7, s:"N", n:"Nitrogen", p:2, g:15, c:"nonmetal" },
-  { z:8, s:"O", n:"Oxygen", p:2, g:16, c:"nonmetal" },
-  { z:9, s:"F", n:"Fluorine", p:2, g:17, c:"halogen" },
-  { z:11, s:"Na", n:"Sodium", p:3, g:1, c:"alkali" },
-  { z:12, s:"Mg", n:"Magnesium", p:3, g:2, c:"alkaline" },
-  { z:13, s:"Al", n:"Aluminium", p:3, g:13, c:"post" },
-  { z:14, s:"Si", n:"Silicon", p:3, g:14, c:"metalloid" },
-  { z:16, s:"S", n:"Sulfur", p:3, g:16, c:"nonmetal" },
-  { z:17, s:"Cl", n:"Chlorine", p:3, g:17, c:"halogen" },
-  { z:19, s:"K", n:"Potassium", p:4, g:1, c:"alkali" },
-  { z:20, s:"Ca", n:"Calcium", p:4, g:2, c:"alkaline" },
-  { z:26, s:"Fe", n:"Iron", p:4, g:8, c:"transition" },
-  { z:29, s:"Cu", n:"Copper", p:4, g:11, c:"transition" },
+  // period 1
+  {z:1,s:"H",n:"Hydrogen",p:1,g:1,c:"nonmetal"},
+  {z:2,s:"He",n:"Helium",p:1,g:18,c:"noble"},
+
+  // period 2
+  {z:3,s:"Li",n:"Lithium",p:2,g:1,c:"alkali"},
+  {z:4,s:"Be",n:"Beryllium",p:2,g:2,c:"alkaline"},
+  {z:5,s:"B",n:"Boron",p:2,g:13,c:"metalloid"},
+  {z:6,s:"C",n:"Carbon",p:2,g:14,c:"nonmetal"},
+  {z:7,s:"N",n:"Nitrogen",p:2,g:15,c:"nonmetal"},
+  {z:8,s:"O",n:"Oxygen",p:2,g:16,c:"nonmetal"},
+  {z:9,s:"F",n:"Fluorine",p:2,g:17,c:"halogen"},
+  {z:10,s:"Ne",n:"Neon",p:2,g:18,c:"noble"},
+
+  // period 3
+  {z:11,s:"Na",n:"Sodium",p:3,g:1,c:"alkali"},
+  {z:12,s:"Mg",n:"Magnesium",p:3,g:2,c:"alkaline"},
+  {z:13,s:"Al",n:"Aluminium",p:3,g:13,c:"post"},
+  {z:14,s:"Si",n:"Silicon",p:3,g:14,c:"metalloid"},
+  {z:15,s:"P",n:"Phosphorus",p:3,g:15,c:"nonmetal"},
+  {z:16,s:"S",n:"Sulfur",p:3,g:16,c:"nonmetal"},
+  {z:17,s:"Cl",n:"Chlorine",p:3,g:17,c:"halogen"},
+  {z:18,s:"Ar",n:"Argon",p:3,g:18,c:"noble"},
+
+  // period 4
+  {z:19,s:"K",n:"Potassium",p:4,g:1,c:"alkali"},
+  {z:20,s:"Ca",n:"Calcium",p:4,g:2,c:"alkaline"},
+  {z:21,s:"Sc",n:"Scandium",p:4,g:3,c:"transition"},
+  {z:22,s:"Ti",n:"Titanium",p:4,g:4,c:"transition"},
+  {z:23,s:"V",n:"Vanadium",p:4,g:5,c:"transition"},
+  {z:24,s:"Cr",n:"Chromium",p:4,g:6,c:"transition"},
+  {z:25,s:"Mn",n:"Manganese",p:4,g:7,c:"transition"},
+  {z:26,s:"Fe",n:"Iron",p:4,g:8,c:"transition"},
+  {z:27,s:"Co",n:"Cobalt",p:4,g:9,c:"transition"},
+  {z:28,s:"Ni",n:"Nickel",p:4,g:10,c:"transition"},
+  {z:29,s:"Cu",n:"Copper",p:4,g:11,c:"transition"},
+  {z:30,s:"Zn",n:"Zinc",p:4,g:12,c:"transition"},
+  {z:31,s:"Ga",n:"Gallium",p:4,g:13,c:"post"},
+  {z:32,s:"Ge",n:"Germanium",p:4,g:14,c:"metalloid"},
+  {z:33,s:"As",n:"Arsenic",p:4,g:15,c:"metalloid"},
+  {z:34,s:"Se",n:"Selenium",p:4,g:16,c:"nonmetal"},
+  {z:35,s:"Br",n:"Bromine",p:4,g:17,c:"halogen"},
+  {z:36,s:"Kr",n:"Krypton",p:4,g:18,c:"noble"},
+
+  // period 5
+  {z:37,s:"Rb",n:"Rubidium",p:5,g:1,c:"alkali"},
+  {z:38,s:"Sr",n:"Strontium",p:5,g:2,c:"alkaline"},
+  {z:39,s:"Y",n:"Yttrium",p:5,g:3,c:"transition"},
+  {z:40,s:"Zr",n:"Zirconium",p:5,g:4,c:"transition"},
+  {z:41,s:"Nb",n:"Niobium",p:5,g:5,c:"transition"},
+  {z:42,s:"Mo",n:"Molybdenum",p:5,g:6,c:"transition"},
+  {z:43,s:"Tc",n:"Technetium",p:5,g:7,c:"transition"},
+  {z:44,s:"Ru",n:"Ruthenium",p:5,g:8,c:"transition"},
+  {z:45,s:"Rh",n:"Rhodium",p:5,g:9,c:"transition"},
+  {z:46,s:"Pd",n:"Palladium",p:5,g:10,c:"transition"},
+  {z:47,s:"Ag",n:"Silver",p:5,g:11,c:"transition"},
+  {z:48,s:"Cd",n:"Cadmium",p:5,g:12,c:"transition"},
+  {z:49,s:"In",n:"Indium",p:5,g:13,c:"post"},
+  {z:50,s:"Sn",n:"Tin",p:5,g:14,c:"post"},
+  {z:51,s:"Sb",n:"Antimony",p:5,g:15,c:"metalloid"},
+  {z:52,s:"Te",n:"Tellurium",p:5,g:16,c:"metalloid"},
+  {z:53,s:"I",n:"Iodine",p:5,g:17,c:"halogen"},
+  {z:54,s:"Xe",n:"Xenon",p:5,g:18,c:"noble"},
+
+  // period 6 (La in main table; lanthanides row below)
+  {z:55,s:"Cs",n:"Caesium",p:6,g:1,c:"alkali"},
+  {z:56,s:"Ba",n:"Barium",p:6,g:2,c:"alkaline"},
+  {z:57,s:"La",n:"Lanthanum",p:6,g:3,c:"lanth"},
+  {z:72,s:"Hf",n:"Hafnium",p:6,g:4,c:"transition"},
+  {z:73,s:"Ta",n:"Tantalum",p:6,g:5,c:"transition"},
+  {z:74,s:"W",n:"Tungsten",p:6,g:6,c:"transition"},
+  {z:75,s:"Re",n:"Rhenium",p:6,g:7,c:"transition"},
+  {z:76,s:"Os",n:"Osmium",p:6,g:8,c:"transition"},
+  {z:77,s:"Ir",n:"Iridium",p:6,g:9,c:"transition"},
+  {z:78,s:"Pt",n:"Platinum",p:6,g:10,c:"transition"},
+  {z:79,s:"Au",n:"Gold",p:6,g:11,c:"transition"},
+  {z:80,s:"Hg",n:"Mercury",p:6,g:12,c:"transition"},
+  {z:81,s:"Tl",n:"Thallium",p:6,g:13,c:"post"},
+  {z:82,s:"Pb",n:"Lead",p:6,g:14,c:"post"},
+  {z:83,s:"Bi",n:"Bismuth",p:6,g:15,c:"post"},
+  {z:84,s:"Po",n:"Polonium",p:6,g:16,c:"post"},
+  {z:85,s:"At",n:"Astatine",p:6,g:17,c:"halogen"},
+  {z:86,s:"Rn",n:"Radon",p:6,g:18,c:"noble"},
+
+  // period 7 (Ac in main table; actinides row below)
+  {z:87,s:"Fr",n:"Francium",p:7,g:1,c:"alkali"},
+  {z:88,s:"Ra",n:"Radium",p:7,g:2,c:"alkaline"},
+  {z:89,s:"Ac",n:"Actinium",p:7,g:3,c:"act"},
+  {z:104,s:"Rf",n:"Rutherfordium",p:7,g:4,c:"transition"},
+  {z:105,s:"Db",n:"Dubnium",p:7,g:5,c:"transition"},
+  {z:106,s:"Sg",n:"Seaborgium",p:7,g:6,c:"transition"},
+  {z:107,s:"Bh",n:"Bohrium",p:7,g:7,c:"transition"},
+  {z:108,s:"Hs",n:"Hassium",p:7,g:8,c:"transition"},
+  {z:109,s:"Mt",n:"Meitnerium",p:7,g:9,c:"transition"},
+  {z:110,s:"Ds",n:"Darmstadtium",p:7,g:10,c:"transition"},
+  {z:111,s:"Rg",n:"Roentgenium",p:7,g:11,c:"transition"},
+  {z:112,s:"Cn",n:"Copernicium",p:7,g:12,c:"transition"},
+  {z:113,s:"Nh",n:"Nihonium",p:7,g:13,c:"post"},
+  {z:114,s:"Fl",n:"Flerovium",p:7,g:14,c:"post"},
+  {z:115,s:"Mc",n:"Moscovium",p:7,g:15,c:"post"},
+  {z:116,s:"Lv",n:"Livermorium",p:7,g:16,c:"post"},
+  {z:117,s:"Ts",n:"Tennessine",p:7,g:17,c:"halogen"},
+  {z:118,s:"Og",n:"Oganesson",p:7,g:18,c:"noble"},
+
+  // Lanthanides row (period 8), placed under groups 4–17
+  {z:58,s:"Ce",n:"Cerium",p:8,g:4,c:"lanth"},
+  {z:59,s:"Pr",n:"Praseodymium",p:8,g:5,c:"lanth"},
+  {z:60,s:"Nd",n:"Neodymium",p:8,g:6,c:"lanth"},
+  {z:61,s:"Pm",n:"Promethium",p:8,g:7,c:"lanth"},
+  {z:62,s:"Sm",n:"Samarium",p:8,g:8,c:"lanth"},
+  {z:63,s:"Eu",n:"Europium",p:8,g:9,c:"lanth"},
+  {z:64,s:"Gd",n:"Gadolinium",p:8,g:10,c:"lanth"},
+  {z:65,s:"Tb",n:"Terbium",p:8,g:11,c:"lanth"},
+  {z:66,s:"Dy",n:"Dysprosium",p:8,g:12,c:"lanth"},
+  {z:67,s:"Ho",n:"Holmium",p:8,g:13,c:"lanth"},
+  {z:68,s:"Er",n:"Erbium",p:8,g:14,c:"lanth"},
+  {z:69,s:"Tm",n:"Thulium",p:8,g:15,c:"lanth"},
+  {z:70,s:"Yb",n:"Ytterbium",p:8,g:16,c:"lanth"},
+  {z:71,s:"Lu",n:"Lutetium",p:8,g:17,c:"lanth"},
+
+  // Actinides row (period 9), placed under groups 4–17
+  {z:90,s:"Th",n:"Thorium",p:9,g:4,c:"act"},
+  {z:91,s:"Pa",n:"Protactinium",p:9,g:5,c:"act"},
+  {z:92,s:"U",n:"Uranium",p:9,g:6,c:"act"},
+  {z:93,s:"Np",n:"Neptunium",p:9,g:7,c:"act"},
+  {z:94,s:"Pu",n:"Plutonium",p:9,g:8,c:"act"},
+  {z:95,s:"Am",n:"Americium",p:9,g:9,c:"act"},
+  {z:96,s:"Cm",n:"Curium",p:9,g:10,c:"act"},
+  {z:97,s:"Bk",n:"Berkelium",p:9,g:11,c:"act"},
+  {z:98,s:"Cf",n:"Californium",p:9,g:12,c:"act"},
+  {z:99,s:"Es",n:"Einsteinium",p:9,g:13,c:"act"},
+  {z:100,s:"Fm",n:"Fermium",p:9,g:14,c:"act"},
+  {z:101,s:"Md",n:"Mendelevium",p:9,g:15,c:"act"},
+  {z:102,s:"No",n:"Nobelium",p:9,g:16,c:"act"},
+  {z:103,s:"Lr",n:"Lawrencium",p:9,g:17,c:"act"},
 ];
+
+// We also need the “gap” elements for periods 6/7 that aren’t in the main row because of lanth/act blocks:
+const EXTRA_MAIN = [
+  // period 6: 57–71 between Ba and Hf (Ce–Lu shown in row 8; but elements 57–71 still exist)
+  {z:58,s:"Ce",n:"Cerium",p:6,g:4,c:"lanth"}, // not shown in main; we already show in row 8
+];
+// NOTE: We intentionally do NOT duplicate them in main table; the row 8/9 display is standard for classroom charts.
 
 // ====== helpers ======
 function showToast(msg){
   toast.textContent = msg;
   toast.classList.add("show");
   clearTimeout(showToast._t);
-  showToast._t = setTimeout(() => toast.classList.remove("show"), 950);
+  showToast._t = setTimeout(() => toast.classList.remove("show"), 1100);
 }
 
 function subscriptNumber(num){
@@ -141,6 +291,14 @@ function renderFormula(order, counts){
     out += sym;
     if(ct > 1) out += subscriptNumber(ct);
   }
+  // any remaining symbols not in order -> append alpha
+  const remaining = Object.keys(counts).filter(k => !order.includes(k)).sort();
+  for(const sym of remaining){
+    const ct = counts[sym] || 0;
+    if(ct <= 0) continue;
+    out += sym;
+    if(ct > 1) out += subscriptNumber(ct);
+  }
   return out || "—";
 }
 
@@ -155,6 +313,11 @@ function sameCounts(a, b){
 function canonicalTapSequence(target){
   const seq = [];
   for(const sym of target.formulaOrder){
+    const ct = target.composition[sym] || 0;
+    for(let i=0;i<ct;i++) seq.push(sym);
+  }
+  const extras = Object.keys(target.composition).filter(k => !target.formulaOrder.includes(k)).sort();
+  for(const sym of extras){
     const ct = target.composition[sym] || 0;
     for(let i=0;i<ct;i++) seq.push(sym);
   }
@@ -199,6 +362,37 @@ function bestKey(){ return `element-builder::best::${mode}::${levelKey}::${stric
 function getBest(){ return Number(localStorage.getItem(bestKey()) || "0"); }
 function setBest(val){ localStorage.setItem(bestKey(), String(val)); }
 
+// ====== table render ======
+function renderTable(){
+  ptable.innerHTML = "";
+  for(const el of ELEMENTS){
+    const tile = document.createElement("button");
+    tile.type = "button";
+    tile.className = `tile ${el.c}`;
+    tile.style.gridColumn = String(el.g);
+    tile.style.gridRow = String(el.p);
+    tile.dataset.symbol = el.s;
+
+    tile.innerHTML = `
+      <div class="num">${el.z}</div>
+      <div class="sym">${el.s}</div>
+      <div class="name" title="${el.n}">${el.n}</div>
+    `;
+
+    tile.addEventListener("click", () => {
+      if(gameState !== "running"){
+        showToast("Press Start");
+        return;
+      }
+      selection.push(el.s);
+      beep("tap");
+      refreshBuildUI();
+    });
+
+    ptable.appendChild(tile);
+  }
+}
+
 // ====== UI ======
 function setPills(){
   modePill.textContent = mode === "practice" ? "Practice" : mode === "sprint" ? "Sprint" : "Streak";
@@ -211,7 +405,7 @@ function setPills(){
 
 function refreshBuildUI(){
   const counts = selectionCounts(selection);
-  const order = currentTarget?.formulaOrder || Object.keys(counts);
+  const order = currentTarget?.formulaOrder || Object.keys(counts).sort();
   formulaPreview.textContent = currentTarget ? renderFormula(order, counts) : "—";
 
   tapRow.innerHTML = "";
@@ -223,6 +417,7 @@ function refreshBuildUI(){
   }
 }
 
+// ====== game flow ======
 function pickTarget(){
   const set = COMPOUND_SETS[levelKey] || COMPOUND_SETS.level1;
   currentTarget = set[Math.floor(Math.random() * set.length)];
@@ -239,7 +434,6 @@ function stopTimer(){
     timerHandle = null;
   }
 }
-
 function startTimer(){
   stopTimer();
   timerHandle = setInterval(() => {
@@ -249,7 +443,6 @@ function startTimer(){
   }, 1000);
 }
 
-// ====== end screen ======
 function endGame(reason){
   gameState = "ended";
   stopTimer();
@@ -279,22 +472,24 @@ function endGame(reason){
 
   $("playAgainBtn").addEventListener("click", () => {
     overlay.classList.remove("show");
-    overlay.setAttribute("aria-hidden","true");
+    overlay.setAttribute("aria-hidden", "true");
     startGame();
   });
-
   $("closeBtn").addEventListener("click", () => {
     overlay.classList.remove("show");
-    overlay.setAttribute("aria-hidden","true");
+    overlay.setAttribute("aria-hidden", "true");
   });
 }
 
-// ====== scoring + submit ======
 function scoreCorrect(isPerfect){
   let pts = 10;
   streak += 1;
   pts += Math.min(10, Math.max(0, streak - 1)); // streak bonus
-  if(strictness === "teach" && !isPerfect) pts = Math.max(6, Math.floor(pts * 0.6));
+
+  if(strictness === "teach" && !isPerfect){
+    pts = Math.max(6, Math.floor(pts * 0.6));
+  }
+
   score += pts;
   if(score > getBest()) bestPill.textContent = `Best: ${score}`;
   setPills();
@@ -302,7 +497,7 @@ function scoreCorrect(isPerfect){
 }
 
 function scoreWrong(kind){
-  let penalty = (mode === "practice") ? 0 : (kind === "count" ? 3 : 2);
+  const penalty = (mode === "practice") ? 0 : (kind === "count" ? 3 : 2);
   score = Math.max(0, score - penalty);
   streak = 0;
   setPills();
@@ -322,7 +517,7 @@ function submit(){
   if(!countsOk){
     beep("bad");
     scoreWrong("count");
-    showToast(`❌ Not quite. Need ${renderFormula(currentTarget.formulaOrder, want)}`);
+    showToast(`❌ Not quite — need ${renderFormula(currentTarget.formulaOrder, want)}`);
     if(mode === "streak"){ endGame("Wrong answer — streak ended."); return; }
     pickTarget();
     return;
@@ -331,7 +526,7 @@ function submit(){
   if(strictness === "loose"){
     beep("good");
     const pts = scoreCorrect(true);
-    showToast(`✅ Correct! +${pts}  (${renderFormula(currentTarget.formulaOrder, want)})`);
+    showToast(`✅ Correct! +${pts} (${renderFormula(currentTarget.formulaOrder, want)})`);
     pickTarget();
     return;
   }
@@ -340,19 +535,19 @@ function submit(){
     if(orderOk){
       beep("good");
       const pts = scoreCorrect(true);
-      showToast(`✅ Perfect! +${pts}  (${renderFormula(currentTarget.formulaOrder, want)})`);
+      showToast(`✅ Perfect! +${pts} (${renderFormula(currentTarget.formulaOrder, want)})`);
       pickTarget();
     } else {
       beep("bad");
       scoreWrong("order");
-      showToast(`❌ Order matters. Try: ${canonical.join(" ")}`);
+      showToast(`❌ Order matters — try: ${canonical.join(" ")}`);
       if(mode === "streak"){ endGame("Wrong order — streak ended."); return; }
       pickTarget();
     }
     return;
   }
 
-  // teach mode
+  // teach
   if(orderOk){
     beep("good");
     const pts = scoreCorrect(true);
@@ -365,8 +560,9 @@ function submit(){
   pickTarget();
 }
 
-// ====== game start ======
 function startGame(){
+  enableActionButtons(); // guarantee buttons never “dulled”
+
   mode = modeSelect.value;
   strictness = strictToggle.value;
   levelKey = levelSelect.value;
@@ -386,34 +582,11 @@ function startGame(){
   else stopTimer();
 }
 
-// ====== periodic table render ======
-function renderTable(){
-  ptable.innerHTML = "";
-  for(const el of ELEMENTS){
-    const tile = document.createElement("button");
-    tile.type = "button";
-    tile.className = `tile ${el.c}`;
-    tile.style.gridColumn = String(el.g);
-    tile.style.gridRow = String(el.p);
-    tile.innerHTML = `
-      <div class="num">${el.z}</div>
-      <div class="sym">${el.s}</div>
-      <div class="name" title="${el.n}">${el.n}</div>
-    `;
-    tile.addEventListener("click", () => {
-      if(gameState !== "running"){ showToast("Press Start"); return; }
-      selection.push(el.s);
-      beep("tap");
-      refreshBuildUI();
-    });
-    ptable.appendChild(tile);
-  }
-}
-
-// ====== events (NO guards that block clicks silently) ======
+// ====== events ======
 startBtn.addEventListener("click", startGame);
 
 undoBtn.addEventListener("click", () => {
+  enableActionButtons();
   if(gameState !== "running"){ showToast("Press Start"); return; }
   if(selection.length === 0){ showToast("Nothing to undo"); return; }
   selection.pop();
@@ -422,6 +595,7 @@ undoBtn.addEventListener("click", () => {
 });
 
 clearBtn.addEventListener("click", () => {
+  enableActionButtons();
   if(gameState !== "running"){ showToast("Press Start"); return; }
   selection = [];
   refreshBuildUI();
@@ -429,8 +603,8 @@ clearBtn.addEventListener("click", () => {
 });
 
 skipBtn.addEventListener("click", () => {
+  enableActionButtons();
   if(gameState !== "running"){ showToast("Press Start"); return; }
-  // tiny penalty (except practice)
   if(mode !== "practice") score = Math.max(0, score - 1);
   streak = 0;
   showToast("Skipped");
@@ -457,14 +631,15 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
-// ====== footer year ======
+// footer year
 (() => {
   const y = new Date().getFullYear();
   const el = document.getElementById("copyrightText");
   if(el) el.textContent = `© ${y} Synge Street Learning Games`;
 })();
 
-// ====== init ======
+// init
+enableActionButtons();
 renderTable();
 setPills();
 refreshBuildUI();
