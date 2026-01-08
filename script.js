@@ -1,5 +1,6 @@
 /* Element Builder • Synge Street Learning Games
-   - Earned hints ("Hint Energy")
+   - Earned hints ("Hint Energy") with streak bonus
+   - Hint bar (progress to next hint + ready hints)
    - No answer shown under compound name
    - Full periodic table (118) + lanthanide/actinide rows
    - Undo/Clear/Skip never disabled
@@ -18,10 +19,10 @@ const timerPill  = $("timerPill");
 const scorePill  = $("scorePill");
 const bestPill   = $("bestPill");
 const streakPill = $("streakPill");
-const poolPill   = $("poolPill"); // we keep pool here
+const poolPill   = $("poolPill");
 
 const promptText = $("promptText");
-const promptHint = $("promptHint"); // used only for earned hints + non-answer status
+const promptHint = $("promptHint"); // ONLY for earned hint text / status (never the answer)
 
 const formulaPreview = $("formulaPreview");
 const tapRow   = $("tapRow");
@@ -47,28 +48,73 @@ function enableActionButtons(){
 }
 
 // ====== Hint Energy system ======
-const HINT_COST = 3;          // change this if you want (e.g., 2 or 4)
-let hintEnergy = 0;           // earned by correct answers
-let hintStage = 0;            // resets per target: 0 -> none used, 1 -> elements shown, 2 -> counts shown
+const HINT_COST = 3;                 // energy required to use Hint
+const STREAK_BONUS_EVERY = 3;        // every N streak -> +1 extra energy
+let hintEnergy = 0;                  // earned energy
+let hintStage = 0;                   // per target: 0 none, 1 elements, 2 counts
 
-function ensureHintEnergyPill(){
+// Hint UI (pill + bar)
+function ensureHintUI(){
   const top = document.querySelector(".promptTop");
-  if(!top) return null;
+  if(!top) return { pill:null, barFill:null, barText:null };
 
   let pill = document.getElementById("hintEnergyPill");
-  if(pill) return pill;
+  if(!pill){
+    pill = document.createElement("div");
+    pill.className = "pill hintPill";
+    pill.id = "hintEnergyPill";
+    pill.textContent = "Hints: 0";
+    top.appendChild(pill);
+  }
 
-  pill = document.createElement("div");
-  pill.className = "pill";
-  pill.id = "hintEnergyPill";
-  pill.textContent = "Hints: 0";
-  top.appendChild(pill);
-  return pill;
+  let bar = document.getElementById("hintChargeBar");
+  let barFill = null;
+  let barText = null;
+
+  if(!bar){
+    bar = document.createElement("div");
+    bar.id = "hintChargeBar";
+    bar.className = "hintBar";
+
+    barFill = document.createElement("div");
+    barFill.className = "hintBarFill";
+    barFill.id = "hintChargeFill";
+
+    barText = document.createElement("div");
+    barText.className = "hintBarText";
+    barText.id = "hintChargeText";
+
+    bar.appendChild(barFill);
+    bar.appendChild(barText);
+    top.appendChild(bar);
+  } else {
+    barFill = document.getElementById("hintChargeFill");
+    barText = document.getElementById("hintChargeText");
+  }
+
+  return { pill, barFill, barText };
 }
-const hintEnergyPill = ensureHintEnergyPill();
+
+const hintUI = ensureHintUI();
 
 function updateHintEnergyUI(){
-  if(hintEnergyPill) hintEnergyPill.textContent = `Hints: ${hintEnergy}`;
+  const ready = Math.floor(hintEnergy / HINT_COST);
+  const rem = hintEnergy % HINT_COST;
+  const pct = Math.min(1, rem / HINT_COST);
+
+  if(hintUI.pill){
+    hintUI.pill.textContent = `Hints: ${hintEnergy} (${ready} ready)`;
+  }
+  if(hintUI.barFill){
+    hintUI.barFill.style.width = `${Math.round(pct * 100)}%`;
+  }
+  if(hintUI.barText){
+    if(ready > 0){
+      hintUI.barText.textContent = `${ready} ready`;
+    } else {
+      hintUI.barText.textContent = `${rem}/${HINT_COST}`;
+    }
+  }
 }
 
 // ====== state ======
@@ -88,7 +134,7 @@ const sprintSeconds = 60;
 let timeLeft = sprintSeconds;
 let timerHandle = null;
 
-// ====== compound sets (hints are NON-formula: no CO₂, no subscripts) ======
+// ====== compound sets (NO formula shown anywhere) ======
 const COMPOUND_SETS = {
   level1: [
     { name:"Water", formulaOrder:["H","O"], composition:{H:2,O:1} },
@@ -144,12 +190,10 @@ const COMPOUND_SETS = {
   ],
 };
 
-// ====== Full periodic table (118) ======
+// ====== Full periodic table (118) + lanth/act rows ======
 const ELEMENTS = [
-  // period 1
   {z:1,s:"H",n:"Hydrogen",p:1,g:1,c:"nonmetal"},
   {z:2,s:"He",n:"Helium",p:1,g:18,c:"noble"},
-  // period 2
   {z:3,s:"Li",n:"Lithium",p:2,g:1,c:"alkali"},
   {z:4,s:"Be",n:"Beryllium",p:2,g:2,c:"alkaline"},
   {z:5,s:"B",n:"Boron",p:2,g:13,c:"metalloid"},
@@ -158,7 +202,6 @@ const ELEMENTS = [
   {z:8,s:"O",n:"Oxygen",p:2,g:16,c:"nonmetal"},
   {z:9,s:"F",n:"Fluorine",p:2,g:17,c:"halogen"},
   {z:10,s:"Ne",n:"Neon",p:2,g:18,c:"noble"},
-  // period 3
   {z:11,s:"Na",n:"Sodium",p:3,g:1,c:"alkali"},
   {z:12,s:"Mg",n:"Magnesium",p:3,g:2,c:"alkaline"},
   {z:13,s:"Al",n:"Aluminium",p:3,g:13,c:"post"},
@@ -167,7 +210,6 @@ const ELEMENTS = [
   {z:16,s:"S",n:"Sulfur",p:3,g:16,c:"nonmetal"},
   {z:17,s:"Cl",n:"Chlorine",p:3,g:17,c:"halogen"},
   {z:18,s:"Ar",n:"Argon",p:3,g:18,c:"noble"},
-  // period 4
   {z:19,s:"K",n:"Potassium",p:4,g:1,c:"alkali"},
   {z:20,s:"Ca",n:"Calcium",p:4,g:2,c:"alkaline"},
   {z:21,s:"Sc",n:"Scandium",p:4,g:3,c:"transition"},
@@ -186,7 +228,6 @@ const ELEMENTS = [
   {z:34,s:"Se",n:"Selenium",p:4,g:16,c:"nonmetal"},
   {z:35,s:"Br",n:"Bromine",p:4,g:17,c:"halogen"},
   {z:36,s:"Kr",n:"Krypton",p:4,g:18,c:"noble"},
-  // period 5
   {z:37,s:"Rb",n:"Rubidium",p:5,g:1,c:"alkali"},
   {z:38,s:"Sr",n:"Strontium",p:5,g:2,c:"alkaline"},
   {z:39,s:"Y",n:"Yttrium",p:5,g:3,c:"transition"},
@@ -205,7 +246,6 @@ const ELEMENTS = [
   {z:52,s:"Te",n:"Tellurium",p:5,g:16,c:"metalloid"},
   {z:53,s:"I",n:"Iodine",p:5,g:17,c:"halogen"},
   {z:54,s:"Xe",n:"Xenon",p:5,g:18,c:"noble"},
-  // period 6 (La shown in main; lanth row below)
   {z:55,s:"Cs",n:"Caesium",p:6,g:1,c:"alkali"},
   {z:56,s:"Ba",n:"Barium",p:6,g:2,c:"alkaline"},
   {z:57,s:"La",n:"Lanthanum",p:6,g:3,c:"lanth"},
@@ -224,7 +264,6 @@ const ELEMENTS = [
   {z:84,s:"Po",n:"Polonium",p:6,g:16,c:"post"},
   {z:85,s:"At",n:"Astatine",p:6,g:17,c:"halogen"},
   {z:86,s:"Rn",n:"Radon",p:6,g:18,c:"noble"},
-  // period 7 (Ac shown in main; act row below)
   {z:87,s:"Fr",n:"Francium",p:7,g:1,c:"alkali"},
   {z:88,s:"Ra",n:"Radium",p:7,g:2,c:"alkaline"},
   {z:89,s:"Ac",n:"Actinium",p:7,g:3,c:"act"},
@@ -243,7 +282,7 @@ const ELEMENTS = [
   {z:116,s:"Lv",n:"Livermorium",p:7,g:16,c:"post"},
   {z:117,s:"Ts",n:"Tennessine",p:7,g:17,c:"halogen"},
   {z:118,s:"Og",n:"Oganesson",p:7,g:18,c:"noble"},
-  // Lanthanides row (period 8)
+  // Lanthanides row
   {z:58,s:"Ce",n:"Cerium",p:8,g:4,c:"lanth"},
   {z:59,s:"Pr",n:"Praseodymium",p:8,g:5,c:"lanth"},
   {z:60,s:"Nd",n:"Neodymium",p:8,g:6,c:"lanth"},
@@ -258,7 +297,7 @@ const ELEMENTS = [
   {z:69,s:"Tm",n:"Thulium",p:8,g:15,c:"lanth"},
   {z:70,s:"Yb",n:"Ytterbium",p:8,g:16,c:"lanth"},
   {z:71,s:"Lu",n:"Lutetium",p:8,g:17,c:"lanth"},
-  // Actinides row (period 9)
+  // Actinides row
   {z:90,s:"Th",n:"Thorium",p:9,g:4,c:"act"},
   {z:91,s:"Pa",n:"Protactinium",p:9,g:5,c:"act"},
   {z:92,s:"U",n:"Uranium",p:9,g:6,c:"act"},
@@ -317,7 +356,7 @@ function arraysEqual(a,b){
   return true;
 }
 
-// Non-answer hints (never show full formula)
+// Tiered hints (NEVER full formula)
 function hintElementsOnly(target){
   const elems = Object.keys(target.composition).sort();
   if(elems.length === 1) return `Element: ${elems[0]}`;
@@ -332,8 +371,7 @@ function hintCounts(target){
 }
 
 function formatSelectionPreview(){
-  if(selection.length === 0) return "—";
-  return selection.join(" ");
+  return selection.length ? selection.join(" ") : "—";
 }
 
 // ====== audio ======
@@ -380,9 +418,7 @@ function setPills(){
 }
 
 function refreshBuildUI(){
-  // Show ONLY their build (no target answer)
   formulaPreview.textContent = formatSelectionPreview();
-
   tapRow.innerHTML = "";
   for(const sym of selection){
     const tok = document.createElement("div");
@@ -430,8 +466,8 @@ function pickTarget(){
 
   promptText.textContent = currentTarget.name;
 
-  // IMPORTANT: no answer shown under the name
-  promptHint.textContent = "";   // hints only appear when earned + requested
+  // No automatic hints / no answer beneath name
+  promptHint.textContent = "";
   hintStage = 0;
 
   selection = [];
@@ -504,8 +540,14 @@ function scoreCorrect(isPerfect){
 
   score += pts;
 
-  // Earn hint energy on correct answers
+  // Earn hint energy on correct
   hintEnergy += 1;
+
+  // Streak bonus charge every N correct in a row
+  if(streak > 0 && (streak % STREAK_BONUS_EVERY === 0)){
+    hintEnergy += 1;
+    showToast(`🔥 Streak bonus! +1 hint charge (streak ${streak})`);
+  }
 
   if(score > getBest()) bestPill.textContent = `Best: ${score}`;
   setPills();
@@ -542,7 +584,7 @@ function submit(){
   if(strictness === "loose"){
     beep("good");
     const pts = scoreCorrect(true);
-    showToast(`✅ Correct! +${pts}  (Hint +1)`);
+    showToast(`✅ Correct! +${pts}  (+1 hint charge)`);
     pickTarget();
     return;
   }
@@ -551,7 +593,7 @@ function submit(){
     if(orderOk){
       beep("good");
       const pts = scoreCorrect(true);
-      showToast(`✅ Perfect! +${pts}  (Hint +1)`);
+      showToast(`✅ Perfect! +${pts}  (+1 hint charge)`);
       pickTarget();
     } else {
       beep("bad");
@@ -567,11 +609,11 @@ function submit(){
   if(orderOk){
     beep("good");
     const pts = scoreCorrect(true);
-    showToast(`✅ Perfect! +${pts}  (Hint +1)`);
+    showToast(`✅ Perfect! +${pts}  (+1 hint charge)`);
   } else {
     beep("warn");
     const pts = scoreCorrect(false);
-    showToast(`⚠️ Almost! +${pts}  (Hint +1)`);
+    showToast(`⚠️ Almost! +${pts}  (+1 hint charge)`);
   }
   pickTarget();
 }
@@ -611,8 +653,7 @@ if(hintBtn){
     if(hintEnergy < HINT_COST){
       const need = HINT_COST - hintEnergy;
       showToast(`Need ${need} more correct to use Hint`);
-      // show non-answer status line (optional)
-      promptHint.textContent = `Hint energy: ${hintEnergy}/${HINT_COST} (earn by correct answers)`;
+      promptHint.textContent = `Hint charge: ${hintEnergy}/${HINT_COST} (earn by correct answers)`;
       return;
     }
 
@@ -620,7 +661,7 @@ if(hintBtn){
     hintEnergy -= HINT_COST;
     updateHintEnergyUI();
 
-    // Tiered hints per compound (never full formula)
+    // Tiered hints (never full formula)
     hintStage = Math.min(2, hintStage + 1);
 
     if(hintStage === 1){
