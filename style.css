@@ -128,7 +128,7 @@ option{
 .btn.primary:hover{ background: rgba(150,190,255,0.38); }
 .btn.ghost{ background: transparent; }
 
-/* Defensive: even if something accidentally disables a button, keep it readable */
+/* Defensive: if something disables a button, keep it readable */
 .btn:disabled{
   opacity: 0.45;
   cursor: not-allowed;
@@ -415,6 +415,45 @@ option{
   margin-top:6px;
   font-size:12px;
   opacity:0.70;
+}
+
+/* Hint charge UI */
+.hintPill{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.hintBar{
+  position: relative;
+  height: 26px;
+  min-width: 120px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.06);
+  overflow: hidden;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.hintBarFill{
+  position:absolute;
+  left:0;
+  top:0;
+  bottom:0;
+  width:0%;
+  background: rgba(150,190,255,0.28);
+  border-right: 1px solid rgba(150,190,255,0.25);
+}
+
+.hintBarText{
+  position:relative;
+  z-index:1;
+  font-size: 12px;
+  color: rgba(255,255,255,0.78);
+  padding: 0 10px;
+  white-space: nowrap;
 }
 
 @media (max-width: 900px){
