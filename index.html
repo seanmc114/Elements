@@ -1,1 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Element Builder</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="title">Element Builder</div>
+      <div class="subtitle">Tap the periodic table to build compounds</div>
+    </div>
+
+    <div class="controls">
+      <div class="chip">
+        <label for="modeSelect">Mode</label>
+        <select id="modeSelect">
+          <option value="practice">Practice</option>
+          <option value="sprint">Sprint (60s)</option>
+          <option value="streak">Streak</option>
+        </select>
+      </div>
+
+      <div class="chip">
+        <label for="levelSelect">Set</label>
+        <select id="levelSelect">
+          <option value="level1">Level 1 (Everyday)</option>
+          <option value="level2">Level 2 (Acids/Bases)</option>
+        </select>
+      </div>
+
+      <div class="chip">
+        <label for="strictToggle">Order</label>
+        <select id="strictToggle">
+          <option value="teach">Teach (Almost if order wrong)</option>
+          <option value="loose">Loose (counts only)</option>
+          <option value="strict">Strict (must tap in formula order)</option>
+        </select>
+      </div>
+
+      <button id="soundBtn" class="btn ghost" type="button" aria-pressed="true">🔊 Sound</button>
+      <button id="startBtn" class="btn primary" type="button">Start</button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="game">
+      <div class="panel prompt">
+        <div class="promptTop">
+          <div class="pill" id="modePill">Practice</div>
+          <div class="pill" id="timerPill">∞</div>
+          <div class="pill" id="scorePill">Score: 0</div>
+          <div class="pill" id="bestPill">Best: 0</div>
+          <div class="pill" id="streakPill">Streak: 0</div>
+        </div>
+
+        <div class="promptBody">
+          <div class="promptLabel">MAKE:</div>
+          <div class="promptText" id="promptText">Press Start</div>
+          <div class="promptHint" id="promptHint"></div>
+        </div>
+      </div>
+
+      <div class="panel build">
+        <div class="buildLeft">
+          <div class="buildLabel">Your formula</div>
+          <div class="formula" id="formulaPreview">—</div>
+        </div>
+
+        <div class="buildMid">
+          <div class="buildLabel">Taps</div>
+          <div class="tapRow" id="tapRow"></div>
+        </div>
+
+        <div class="buildRight">
+          <button id="undoBtn" class="btn" type="button">Undo</button>
+          <button id="clearBtn" class="btn" type="button">Clear</button>
+          <button id="submitBtn" class="btn primary" type="button">Submit</button>
+        </div>
+      </div>
+
+      <div class="panel table">
+        <div class="tableHeader">
+          <div class="tableTitle">Periodic Table</div>
+          <div class="tableNote">Tap elements to build the compound.</div>
+        </div>
+
+        <div id="ptable" class="ptable" aria-label="Periodic table"></div>
+
+        <div class="seriesKey">
+          <span class="keyItem"><span class="keySwatch alkali"></span> Alkali</span>
+          <span class="keyItem"><span class="keySwatch alkaline"></span> Alkaline earth</span>
+          <span class="keyItem"><span class="keySwatch transition"></span> Transition</span>
+          <span class="keyItem"><span class="keySwatch post"></span> Post-transition</span>
+          <span class="keyItem"><span class="keySwatch metalloid"></span> Metalloid</span>
+          <span class="keyItem"><span class="keySwatch nonmetal"></span> Nonmetal</span>
+          <span class="keyItem"><span class="keySwatch halogen"></span> Halogen</span>
+          <span class="keyItem"><span class="keySwatch noble"></span> Noble gas</span>
+          <span class="keyItem"><span class="keySwatch lanth"></span> Lanthanide</span>
+          <span class="keyItem"><span class="keySwatch act"></span> Actinide</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="overlay" class="overlay" aria-hidden="true">
+    <div class="overlayCard" id="overlayCard"></div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
 
