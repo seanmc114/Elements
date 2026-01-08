@@ -1,9 +1,10 @@
 /* Element Builder • Synge Street Learning Games
-   - Earned hints ("Hint Energy") with streak bonus
-   - Hint bar (progress to next hint + ready hints)
-   - No answer shown under compound name
-   - Full periodic table (118) + lanthanide/actinide rows
+   FINAL:
+   - No answer displayed under compound name
+   - Build display shows what the student actually built (e.g., HO2 / H2O)
+   - Earned hints + hint bar + streak bonus charge
    - Undo/Clear/Skip never disabled
+   - Full periodic table (118) + lanth/act rows
 */
 
 const $ = (id) => document.getElementById(id);
@@ -21,24 +22,28 @@ const bestPill   = $("bestPill");
 const streakPill = $("streakPill");
 const poolPill   = $("poolPill");
 
+const hintEnergyPill = $("hintEnergyPill");
+const hintChargeFill = $("hintChargeFill");
+const hintChargeText = $("hintChargeText");
+
 const promptText = $("promptText");
-const promptHint = $("promptHint"); // ONLY for earned hint text / status (never the answer)
+const promptHint = $("promptHint");
 
 const formulaPreview = $("formulaPreview");
 const tapRow   = $("tapRow");
 const undoBtn  = $("undoBtn");
 const clearBtn = $("clearBtn");
 const skipBtn  = $("skipBtn");
-const submitBtn= $("submitBtn");
 const hintBtn  = $("hintBtn");
+const submitBtn= $("submitBtn");
 
 const toast   = $("toast");
 const overlay = $("overlay");
 const overlayCard = $("overlayCard");
 const ptable  = $("ptable");
 
-// --- Force action buttons on (prevents "dulled / disabled") ---
-const actionButtons = [undoBtn, clearBtn, skipBtn, submitBtn, hintBtn].filter(Boolean);
+// Always keep these active (prevents dulled/disabled look)
+const actionButtons = [undoBtn, clearBtn, skipBtn, hintBtn, submitBtn].filter(Boolean);
 function enableActionButtons(){
   actionButtons.forEach(b => {
     b.disabled = false;
@@ -47,77 +52,24 @@ function enableActionButtons(){
   });
 }
 
-// ====== Hint Energy system ======
-const HINT_COST = 3;                 // energy required to use Hint
-const STREAK_BONUS_EVERY = 3;        // every N streak -> +1 extra energy
-let hintEnergy = 0;                  // earned energy
-let hintStage = 0;                   // per target: 0 none, 1 elements, 2 counts
+// ===== Hint Energy system =====
+const HINT_COST = 3;
+const STREAK_BONUS_EVERY = 3;
 
-// Hint UI (pill + bar)
-function ensureHintUI(){
-  const top = document.querySelector(".promptTop");
-  if(!top) return { pill:null, barFill:null, barText:null };
+let hintEnergy = 0;
+let hintStage = 0; // per target: 0 none, 1 elements, 2 counts
 
-  let pill = document.getElementById("hintEnergyPill");
-  if(!pill){
-    pill = document.createElement("div");
-    pill.className = "pill hintPill";
-    pill.id = "hintEnergyPill";
-    pill.textContent = "Hints: 0";
-    top.appendChild(pill);
-  }
-
-  let bar = document.getElementById("hintChargeBar");
-  let barFill = null;
-  let barText = null;
-
-  if(!bar){
-    bar = document.createElement("div");
-    bar.id = "hintChargeBar";
-    bar.className = "hintBar";
-
-    barFill = document.createElement("div");
-    barFill.className = "hintBarFill";
-    barFill.id = "hintChargeFill";
-
-    barText = document.createElement("div");
-    barText.className = "hintBarText";
-    barText.id = "hintChargeText";
-
-    bar.appendChild(barFill);
-    bar.appendChild(barText);
-    top.appendChild(bar);
-  } else {
-    barFill = document.getElementById("hintChargeFill");
-    barText = document.getElementById("hintChargeText");
-  }
-
-  return { pill, barFill, barText };
-}
-
-const hintUI = ensureHintUI();
-
-function updateHintEnergyUI(){
+function updateHintUI(){
   const ready = Math.floor(hintEnergy / HINT_COST);
   const rem = hintEnergy % HINT_COST;
   const pct = Math.min(1, rem / HINT_COST);
 
-  if(hintUI.pill){
-    hintUI.pill.textContent = `Hints: ${hintEnergy} (${ready} ready)`;
-  }
-  if(hintUI.barFill){
-    hintUI.barFill.style.width = `${Math.round(pct * 100)}%`;
-  }
-  if(hintUI.barText){
-    if(ready > 0){
-      hintUI.barText.textContent = `${ready} ready`;
-    } else {
-      hintUI.barText.textContent = `${rem}/${HINT_COST}`;
-    }
-  }
+  if(hintEnergyPill) hintEnergyPill.textContent = `Hints: ${hintEnergy} (${ready} ready)`;
+  if(hintChargeFill) hintChargeFill.style.width = `${Math.round(pct * 100)}%`;
+  if(hintChargeText) hintChargeText.textContent = ready > 0 ? `${ready} ready` : `${rem}/${HINT_COST}`;
 }
 
-// ====== state ======
+// ===== Game state =====
 let soundOn = true;
 let gameState = "idle"; // idle | running | ended
 let mode = "practice";
@@ -126,7 +78,6 @@ let levelKey = "level1";
 
 let score = 0;
 let streak = 0;
-
 let selection = [];
 let currentTarget = null;
 
@@ -134,7 +85,7 @@ const sprintSeconds = 60;
 let timeLeft = sprintSeconds;
 let timerHandle = null;
 
-// ====== compound sets (NO formula shown anywhere) ======
+// ===== Data (expanded sets) =====
 const COMPOUND_SETS = {
   level1: [
     { name:"Water", formulaOrder:["H","O"], composition:{H:2,O:1} },
@@ -190,10 +141,11 @@ const COMPOUND_SETS = {
   ],
 };
 
-// ====== Full periodic table (118) + lanth/act rows ======
+// ===== Periodic table (118 + lanth/act rows) =====
 const ELEMENTS = [
   {z:1,s:"H",n:"Hydrogen",p:1,g:1,c:"nonmetal"},
   {z:2,s:"He",n:"Helium",p:1,g:18,c:"noble"},
+
   {z:3,s:"Li",n:"Lithium",p:2,g:1,c:"alkali"},
   {z:4,s:"Be",n:"Beryllium",p:2,g:2,c:"alkaline"},
   {z:5,s:"B",n:"Boron",p:2,g:13,c:"metalloid"},
@@ -202,6 +154,7 @@ const ELEMENTS = [
   {z:8,s:"O",n:"Oxygen",p:2,g:16,c:"nonmetal"},
   {z:9,s:"F",n:"Fluorine",p:2,g:17,c:"halogen"},
   {z:10,s:"Ne",n:"Neon",p:2,g:18,c:"noble"},
+
   {z:11,s:"Na",n:"Sodium",p:3,g:1,c:"alkali"},
   {z:12,s:"Mg",n:"Magnesium",p:3,g:2,c:"alkaline"},
   {z:13,s:"Al",n:"Aluminium",p:3,g:13,c:"post"},
@@ -210,6 +163,7 @@ const ELEMENTS = [
   {z:16,s:"S",n:"Sulfur",p:3,g:16,c:"nonmetal"},
   {z:17,s:"Cl",n:"Chlorine",p:3,g:17,c:"halogen"},
   {z:18,s:"Ar",n:"Argon",p:3,g:18,c:"noble"},
+
   {z:19,s:"K",n:"Potassium",p:4,g:1,c:"alkali"},
   {z:20,s:"Ca",n:"Calcium",p:4,g:2,c:"alkaline"},
   {z:21,s:"Sc",n:"Scandium",p:4,g:3,c:"transition"},
@@ -228,6 +182,7 @@ const ELEMENTS = [
   {z:34,s:"Se",n:"Selenium",p:4,g:16,c:"nonmetal"},
   {z:35,s:"Br",n:"Bromine",p:4,g:17,c:"halogen"},
   {z:36,s:"Kr",n:"Krypton",p:4,g:18,c:"noble"},
+
   {z:37,s:"Rb",n:"Rubidium",p:5,g:1,c:"alkali"},
   {z:38,s:"Sr",n:"Strontium",p:5,g:2,c:"alkaline"},
   {z:39,s:"Y",n:"Yttrium",p:5,g:3,c:"transition"},
@@ -246,6 +201,7 @@ const ELEMENTS = [
   {z:52,s:"Te",n:"Tellurium",p:5,g:16,c:"metalloid"},
   {z:53,s:"I",n:"Iodine",p:5,g:17,c:"halogen"},
   {z:54,s:"Xe",n:"Xenon",p:5,g:18,c:"noble"},
+
   {z:55,s:"Cs",n:"Caesium",p:6,g:1,c:"alkali"},
   {z:56,s:"Ba",n:"Barium",p:6,g:2,c:"alkaline"},
   {z:57,s:"La",n:"Lanthanum",p:6,g:3,c:"lanth"},
@@ -264,6 +220,7 @@ const ELEMENTS = [
   {z:84,s:"Po",n:"Polonium",p:6,g:16,c:"post"},
   {z:85,s:"At",n:"Astatine",p:6,g:17,c:"halogen"},
   {z:86,s:"Rn",n:"Radon",p:6,g:18,c:"noble"},
+
   {z:87,s:"Fr",n:"Francium",p:7,g:1,c:"alkali"},
   {z:88,s:"Ra",n:"Radium",p:7,g:2,c:"alkaline"},
   {z:89,s:"Ac",n:"Actinium",p:7,g:3,c:"act"},
@@ -282,7 +239,8 @@ const ELEMENTS = [
   {z:116,s:"Lv",n:"Livermorium",p:7,g:16,c:"post"},
   {z:117,s:"Ts",n:"Tennessine",p:7,g:17,c:"halogen"},
   {z:118,s:"Og",n:"Oganesson",p:7,g:18,c:"noble"},
-  // Lanthanides row
+
+  // Lanthanides row (p=8, groups 4–17)
   {z:58,s:"Ce",n:"Cerium",p:8,g:4,c:"lanth"},
   {z:59,s:"Pr",n:"Praseodymium",p:8,g:5,c:"lanth"},
   {z:60,s:"Nd",n:"Neodymium",p:8,g:6,c:"lanth"},
@@ -297,7 +255,8 @@ const ELEMENTS = [
   {z:69,s:"Tm",n:"Thulium",p:8,g:15,c:"lanth"},
   {z:70,s:"Yb",n:"Ytterbium",p:8,g:16,c:"lanth"},
   {z:71,s:"Lu",n:"Lutetium",p:8,g:17,c:"lanth"},
-  // Actinides row
+
+  // Actinides row (p=9, groups 4–17)
   {z:90,s:"Th",n:"Thorium",p:9,g:4,c:"act"},
   {z:91,s:"Pa",n:"Protactinium",p:9,g:5,c:"act"},
   {z:92,s:"U",n:"Uranium",p:9,g:6,c:"act"},
@@ -314,12 +273,17 @@ const ELEMENTS = [
   {z:103,s:"Lr",n:"Lawrencium",p:9,g:17,c:"act"},
 ];
 
-// ====== helpers ======
+// ===== Helpers =====
 function showToast(msg){
   toast.textContent = msg;
   toast.classList.add("show");
   clearTimeout(showToast._t);
   showToast._t = setTimeout(() => toast.classList.remove("show"), 1100);
+}
+
+const subMap = { "0":"₀","1":"₁","2":"₂","3":"₃","4":"₄","5":"₅","6":"₆","7":"₇","8":"₈","9":"₉" };
+function subscript(n){
+  return String(n).split("").map(ch => subMap[ch] || ch).join("");
 }
 
 function selectionCounts(sel){
@@ -356,7 +320,29 @@ function arraysEqual(a,b){
   return true;
 }
 
-// Tiered hints (NEVER full formula)
+// Render what the STUDENT built, not the answer.
+// Uses order of first appearance in selection, with subscripts.
+function builtFormulaFromSelection(sel){
+  if(sel.length === 0) return "—";
+  const counts = selectionCounts(sel);
+  const order = [];
+  const seen = new Set();
+  for(const sym of sel){
+    if(!seen.has(sym)){
+      seen.add(sym);
+      order.push(sym);
+    }
+  }
+  let out = "";
+  for(const sym of order){
+    const ct = counts[sym] || 0;
+    if(ct <= 0) continue;
+    out += sym + (ct > 1 ? subscript(ct) : "");
+  }
+  return out || "—";
+}
+
+// Tiered hints (never full formula)
 function hintElementsOnly(target){
   const elems = Object.keys(target.composition).sort();
   if(elems.length === 1) return `Element: ${elems[0]}`;
@@ -370,11 +356,7 @@ function hintCounts(target){
   return `Counts: ${parts.join("  ")}`;
 }
 
-function formatSelectionPreview(){
-  return selection.length ? selection.join(" ") : "—";
-}
-
-// ====== audio ======
+// ===== Audio =====
 let audioCtx = null;
 function beep(type){
   if(!soundOn) return;
@@ -401,12 +383,12 @@ function beep(type){
   o.stop(now + dur + 0.02);
 }
 
-// ====== storage ======
+// ===== Best score storage =====
 function bestKey(){ return `element-builder::best::${mode}::${levelKey}::${strictness}`; }
 function getBest(){ return Number(localStorage.getItem(bestKey()) || "0"); }
 function setBest(val){ localStorage.setItem(bestKey(), String(val)); }
 
-// ====== UI ======
+// ===== UI =====
 function setPills(){
   modePill.textContent = mode === "practice" ? "Practice" : mode === "sprint" ? "Sprint" : "Streak";
   scorePill.textContent = `Score: ${score}`;
@@ -414,11 +396,12 @@ function setPills(){
   streakPill.textContent = `Streak: ${streak}`;
   timerPill.textContent = (mode === "sprint") ? `${timeLeft}s` : "∞";
   poolPill.textContent = `Pool: ${(COMPOUND_SETS[levelKey] || []).length}`;
-  updateHintEnergyUI();
+  updateHintUI();
 }
 
 function refreshBuildUI(){
-  formulaPreview.textContent = formatSelectionPreview();
+  formulaPreview.textContent = builtFormulaFromSelection(selection);
+
   tapRow.innerHTML = "";
   for(const sym of selection){
     const tok = document.createElement("div");
@@ -428,7 +411,7 @@ function refreshBuildUI(){
   }
 }
 
-// ====== table render ======
+// ===== Table render =====
 function renderTable(){
   ptable.innerHTML = "";
   for(const el of ELEMENTS){
@@ -459,14 +442,14 @@ function renderTable(){
   }
 }
 
-// ====== game flow ======
+// ===== Game flow =====
 function pickTarget(){
   const set = COMPOUND_SETS[levelKey] || COMPOUND_SETS.level1;
   currentTarget = set[Math.floor(Math.random() * set.length)];
 
   promptText.textContent = currentTarget.name;
 
-  // No automatic hints / no answer beneath name
+  // IMPORTANT: no automatic hint/answer here
   promptHint.textContent = "";
   hintStage = 0;
 
@@ -529,36 +512,36 @@ function endGame(reason){
   });
 }
 
-function scoreCorrect(isPerfect){
-  let pts = 10;
-  streak += 1;
-  pts += Math.min(10, Math.max(0, streak - 1));
-
-  if(strictness === "teach" && !isPerfect){
-    pts = Math.max(6, Math.floor(pts * 0.6));
-  }
-
-  score += pts;
-
-  // Earn hint energy on correct
-  hintEnergy += 1;
-
-  // Streak bonus charge every N correct in a row
-  if(streak > 0 && (streak % STREAK_BONUS_EVERY === 0)){
-    hintEnergy += 1;
-    showToast(`🔥 Streak bonus! +1 hint charge (streak ${streak})`);
-  }
-
-  if(score > getBest()) bestPill.textContent = `Best: ${score}`;
-  setPills();
-  return pts;
-}
-
 function scoreWrong(kind){
   const penalty = (mode === "practice") ? 0 : (kind === "count" ? 3 : 2);
   score = Math.max(0, score - penalty);
   streak = 0;
   setPills();
+}
+
+function scoreCorrect(isPerfect){
+  let pts = 10;
+  streak += 1;
+  pts += Math.min(10, Math.max(0, streak - 1));
+
+  // teach mode: correct counts but wrong order = reduced points
+  if(strictness === "teach" && !isPerfect){
+    pts = Math.max(6, Math.floor(pts * 0.6));
+  }
+
+  // earned hints
+  hintEnergy += 1;
+
+  // streak bonus charge
+  if(streak > 0 && (streak % STREAK_BONUS_EVERY === 0)){
+    hintEnergy += 1;
+    showToast(`🔥 Streak bonus! +1 hint charge (streak ${streak})`);
+  }
+
+  score += pts;
+  if(score > getBest()) bestPill.textContent = `Best: ${score}`;
+  setPills();
+  return pts;
 }
 
 function submit(){
@@ -584,7 +567,7 @@ function submit(){
   if(strictness === "loose"){
     beep("good");
     const pts = scoreCorrect(true);
-    showToast(`✅ Correct! +${pts}  (+1 hint charge)`);
+    showToast(`✅ Correct! +${pts}  (+1 hint)`);
     pickTarget();
     return;
   }
@@ -593,12 +576,12 @@ function submit(){
     if(orderOk){
       beep("good");
       const pts = scoreCorrect(true);
-      showToast(`✅ Perfect! +${pts}  (+1 hint charge)`);
+      showToast(`✅ Perfect! +${pts}  (+1 hint)`);
       pickTarget();
     } else {
       beep("bad");
       scoreWrong("order");
-      showToast("❌ Order matters — try again (earn hints if stuck)");
+      showToast("❌ Order matters — try again");
       if(mode === "streak"){ endGame("Wrong order — streak ended."); return; }
       pickTarget();
     }
@@ -609,11 +592,13 @@ function submit(){
   if(orderOk){
     beep("good");
     const pts = scoreCorrect(true);
-    showToast(`✅ Perfect! +${pts}  (+1 hint charge)`);
+    showToast(`✅ Perfect! +${pts}  (+1 hint)`);
   } else {
     beep("warn");
     const pts = scoreCorrect(false);
-    showToast(`⚠️ Almost! +${pts}  (+1 hint charge)`);
+    showToast(`⚠️ Correct atoms! +${pts}  (+1 hint)`);
+    // counts are already right, so order tip is safe here:
+    promptHint.textContent = `Tip: common order is ${currentTarget.formulaOrder.join(" then ")}`;
   }
   pickTarget();
 }
@@ -643,38 +628,39 @@ function startGame(){
   else stopTimer();
 }
 
-// ====== Hint button (earned) ======
-if(hintBtn){
-  hintBtn.addEventListener("click", () => {
-    enableActionButtons();
-    if(gameState !== "running"){ showToast("Press Start"); return; }
-    if(!currentTarget) return;
+// ===== Hint button (earned, tiered) =====
+hintBtn.addEventListener("click", () => {
+  enableActionButtons();
+  if(gameState !== "running"){ showToast("Press Start"); return; }
+  if(!currentTarget) return;
 
-    if(hintEnergy < HINT_COST){
-      const need = HINT_COST - hintEnergy;
-      showToast(`Need ${need} more correct to use Hint`);
-      promptHint.textContent = `Hint charge: ${hintEnergy}/${HINT_COST} (earn by correct answers)`;
-      return;
-    }
+  // if already at max hint stage, don't charge again
+  if(hintStage >= 2){
+    showToast("No more hints for this one");
+    return;
+  }
 
-    // Spend energy
-    hintEnergy -= HINT_COST;
-    updateHintEnergyUI();
+  if(hintEnergy < HINT_COST){
+    const need = HINT_COST - hintEnergy;
+    showToast(`Need ${need} more correct to use Hint`);
+    promptHint.textContent = `Hint charge: ${hintEnergy}/${HINT_COST} (earned by correct answers)`;
+    return;
+  }
 
-    // Tiered hints (never full formula)
-    hintStage = Math.min(2, hintStage + 1);
+  hintEnergy -= HINT_COST;
+  hintStage += 1;
+  updateHintUI();
 
-    if(hintStage === 1){
-      promptHint.textContent = `Hint: ${hintElementsOnly(currentTarget)}`;
-      showToast("Hint used: elements");
-    } else {
-      promptHint.textContent = `Hint: ${hintCounts(currentTarget)}`;
-      showToast("Hint used: counts");
-    }
-  });
-}
+  if(hintStage === 1){
+    promptHint.textContent = `Hint: ${hintElementsOnly(currentTarget)}`;
+    showToast("Hint used: elements");
+  } else {
+    promptHint.textContent = `Hint: ${hintCounts(currentTarget)}`;
+    showToast("Hint used: counts");
+  }
+});
 
-// ====== events ======
+// ===== Buttons =====
 startBtn.addEventListener("click", startGame);
 
 undoBtn.addEventListener("click", () => {
@@ -717,8 +703,20 @@ modeSelect.addEventListener("change", () => { mode = modeSelect.value; setPills(
 levelSelect.addEventListener("change", () => { levelKey = levelSelect.value; setPills(); });
 strictToggle.addEventListener("change", () => { strictness = strictToggle.value; setPills(); });
 
+// keyboard shortcuts
 window.addEventListener("keydown", (e) => {
-  if(e.key === "Enter" && gameState === "running") submit();
+  if(gameState !== "running") return;
+
+  if(e.key === "Enter") submit();
+  if(e.key === "Backspace"){
+    e.preventDefault();
+    if(selection.length){ selection.pop(); refreshBuildUI(); beep("tap"); }
+  }
+  if(e.key === "Delete"){
+    selection = [];
+    refreshBuildUI();
+    showToast("Cleared");
+  }
   if(e.key === "Escape"){
     overlay.classList.remove("show");
     overlay.setAttribute("aria-hidden","true");
